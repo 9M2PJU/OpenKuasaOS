@@ -117,7 +117,11 @@ export function quotationsView(rows: QuotationListRow[], today: string): Quotati
 
 export type QuotationFilter = 'all' | QuotationDisplayStatus;
 
-/** Quotations matching the status and customer filters whose number or customer contains the search text. */
+/**
+ * Quotations matching the status and customer filters whose number, customer
+ * or invoice number contains the search text. The invoice is the one made
+ * from the quotation; while that is a draft it has no number to match.
+ */
 export function filterQuotations(
   rows: QuotationListRow[],
   query: string,
@@ -129,7 +133,7 @@ export function filterQuotations(
     (row) =>
       (filter === 'all' || row.display_status === filter) &&
       (customerId === 'all' || row.customer_id === customerId) &&
-      `${row.quotation_no ?? ''} ${row.customer_name}`.toLowerCase().includes(q),
+      `${row.quotation_no ?? ''} ${row.customer_name} ${row.invoice_no ?? ''}`.toLowerCase().includes(q),
   );
 }
 
@@ -139,16 +143,49 @@ export function quotationInvoice(row: QuotationListRow): string | null {
   return row.invoice_no ?? 'Draft invoice';
 }
 
-/** The quotations table as a CSV file. The total is a number, so a spreadsheet can add it up. */
+export type QuotationAction = 'edit' | 'send' | 'delete' | 'accept' | 'decline' | 'convert';
+
+/**
+ * What a quotation's row menu offers, in order: only what the database allows
+ * for its status. A draft is edited, marked as sent or deleted. Once sent it
+ * is locked, and only the customer's answer is recorded: accepted or
+ * declined, on an expired quotation too, since accepting late is the seller's
+ * call. An accepted quotation is made into an invoice, or its answer is
+ * corrected; a declined one can be corrected to accepted. Once an invoice
+ * stands for the quotation the answer is frozen and it cannot be converted
+ * again, so nothing is offered.
+ */
+export function quotationActions(row: QuotationListRow): QuotationAction[] {
+  if (row.display_status === 'draft') return ['edit', 'send', 'delete'];
+  if (row.invoice_id !== null) return [];
+  switch (row.display_status) {
+    case 'sent':
+    case 'expired':
+      return ['accept', 'decline'];
+    case 'accepted':
+      return ['convert', 'decline'];
+    case 'declined':
+      return ['accept'];
+    default:
+      return [];
+  }
+}
+
+/** How a question or a menu names one quotation: its number, or "the draft quotation", and its customer. */
+export function quotationName(row: QuotationListRow): string {
+  return `${row.quotation_no ?? 'the draft quotation'} to ${row.customer_name}`;
+}
+
+/** The quotations table as a CSV file, its columns in the table's order. The total is a number, so a spreadsheet can add it up. */
 export function quotationsCsv(rows: QuotationListRow[]): string {
   return toCsv(
-    ['No.', 'Date', 'Customer', 'Valid until', 'Total', 'Status', 'Invoice'],
+    ['No.', 'Date', 'Customer', 'Total', 'Valid until', 'Status', 'Invoice'],
     rows.map((q) => [
       q.quotation_no,
       q.quote_date,
       q.customer_name,
-      q.valid_until,
       q.total,
+      q.valid_until,
       QUOTATION_STATUS_LABELS[q.display_status],
       quotationInvoice(q),
     ]),
@@ -265,9 +302,13 @@ export type RefundsViewData = {
   refundedYtd: string;
 };
 
-/** A refund is a payment out: scheduled reads "Pending" here and posted reads "Refunded". */
+/**
+ * A refund is a payment out: scheduled reads "Pending" here and posted reads
+ * "Refunded". One still being written (`draft`) is counted as pending by the
+ * filter and the Pending card, so it reads "Pending" too.
+ */
 export const REFUND_STATUS_LABELS: Record<RefundRow['status'], string> = {
-  draft: 'Draft',
+  draft: 'Pending',
   pending_approval: 'Pending approval',
   scheduled: 'Pending',
   posted: 'Refunded',
