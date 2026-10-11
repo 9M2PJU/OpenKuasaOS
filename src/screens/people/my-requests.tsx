@@ -1,6 +1,7 @@
 import { ClipboardList, Plus } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { BentoCard, BentoGrid, BentoStat } from '@/components/bento/bento';
+import { CancelRequestButton } from '@/components/people/cancel-request-button';
 import { PageHeader } from '@/components/screen/page-header';
 import { ScreenContainer } from '@/components/screen/screen-container';
 import { LiveDot } from '@/components/ui/live-dot';
@@ -10,13 +11,67 @@ import type { RequestStatus } from '@/lib/people/types';
 import { LOAD_FAILED, LaterButton, Muted, NotLinkedCard, StatusPill, requestTone } from './parts';
 
 /** The status column: a live dot while a request waits, then the pill. */
-export function StatusCell({ status }: { status: RequestStatus }) {
+export function StatusCell({ status, note }: { status: RequestStatus; note?: string | null }) {
   return (
-    <span className="flex items-center gap-2">
-      <LiveDot active={status === 'pending'} />
-      <StatusPill tone={requestTone(status)}>{REQUEST_STATUS_LABEL[status]}</StatusPill>
+    <span className="flex flex-col gap-1">
+      <span className="flex items-center gap-2">
+        <LiveDot active={status === 'pending'} />
+        <StatusPill tone={requestTone(status)}>{REQUEST_STATUS_LABEL[status]}</StatusPill>
+      </span>
+      {note ? (
+        <span className="max-w-56 whitespace-normal text-xs text-muted-foreground">Note: {note}</span>
+      ) : null}
     </span>
   );
+}
+
+export const DEMO_SIGN_UP_NOTE = 'Sign up to try this with your own team.';
+
+/**
+ * The header control of a screen where members can act: the live `apply`
+ * control for a linked member, the disabled "later" button and an invitation
+ * for a demo visitor, and nothing for an account that is linked to no
+ * employee (or when the read failed).
+ */
+export function requestHeaderAction({
+  model,
+  isDemo,
+  label,
+  apply,
+}: {
+  model: { linked: boolean } | null;
+  isDemo: boolean;
+  label: string;
+  apply: ReactNode;
+}): ReactNode {
+  if (isDemo) {
+    return (
+      <span className="flex flex-col items-end gap-1">
+        <LaterButton icon={Plus} size="sm">
+          {label}
+        </LaterButton>
+        <span className="text-xs text-muted-foreground">{DEMO_SIGN_UP_NOTE}</span>
+      </span>
+    );
+  }
+  return model?.linked ? apply : null;
+}
+
+/** The last cell of a row: Cancel when the rule allows it, the disabled button for a demo visitor, else nothing. */
+export function requestCancelCell({
+  cancellable,
+  isDemo,
+  kind,
+  id,
+}: {
+  cancellable: boolean;
+  isDemo: boolean;
+  kind: 'leave' | 'time-off';
+  id: string;
+}): ReactNode {
+  if (!cancellable) return null;
+  if (isDemo) return <LaterButton variant="outline" size="sm" compact>Cancel</LaterButton>;
+  return <CancelRequestButton kind={kind} id={id} />;
 }
 
 export type RequestKpi = { label: string; value: ReactNode; caption?: string };
@@ -28,15 +83,18 @@ export type RequestTableRow = {
 };
 
 /**
- * The layout the four "my requests" screens share: a header with one control
- * that is not built yet, four figures, two summary cards, and the person's
- * own requests. `model` is null when the read failed; `linked` is false when
- * the account is linked to no employee record.
+ * The layout the four "my requests" screens share: a header with one control,
+ * four figures, two summary cards, and the person's own requests. By default
+ * the control is the disabled "later" button named by `laterLabel`; a screen
+ * that is built passes `headerAction` instead (null for no control at all).
+ * `model` is null when the read failed; `linked` is false when the account is
+ * linked to no employee record.
  */
 export function MyRequestsScreen({
   title,
   subtitle,
   laterLabel,
+  headerAction,
   model,
   kpis,
   summary,
@@ -48,6 +106,8 @@ export function MyRequestsScreen({
   title: string;
   subtitle: string;
   laterLabel: string;
+  /** Replaces the "later" button: a live control, or null for none. Left out, the "later" button shows. */
+  headerAction?: ReactNode;
   /** Null when the read failed. */
   model: { linked: boolean } | null;
   kpis: RequestKpi[];
@@ -64,9 +124,13 @@ export function MyRequestsScreen({
       title={title}
       subtitle={subtitle}
       actions={
-        <LaterButton icon={Plus} size="sm">
-          {laterLabel}
-        </LaterButton>
+        headerAction !== undefined ? (
+          headerAction
+        ) : (
+          <LaterButton icon={Plus} size="sm">
+            {laterLabel}
+          </LaterButton>
+        )
       }
     />
   );

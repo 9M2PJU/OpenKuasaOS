@@ -4,9 +4,10 @@ import {
   buildLeaveModel,
   buildOtModel,
   buildTimeOffModel,
+  canCancelRequest,
 } from '@/lib/people/requests';
 import { createSeedPeopleData } from '@/lib/people/seed';
-import { DEMO_EMPLOYEE_ID, type PeopleViewer } from '@/lib/people/types';
+import { DEMO_EMPLOYEE_ID, type LeaveRequest, type PeopleViewer, type TimeOffRequest } from '@/lib/people/types';
 
 const NOW = new Date('2026-10-09T04:00:00Z');
 const TODAY = '2026-10-09';
@@ -61,8 +62,8 @@ describe('buildLeaveModel', () => {
   it('counts approved unpaid days this year and shows a dash for an unreadable applied date', () => {
     const model = buildLeaveModel(
       [
-        { id: 'a', employee_id: 'e', employee_name: 'E', leave_type: 'unpaid', start_date: '2026-03-02', end_date: '2026-03-03', days: 2, reason: null, status: 'approved', created_at: 'bad' },
-        { id: 'b', employee_id: 'e', employee_name: 'E', leave_type: 'annual', start_date: '2025-12-30', end_date: '2025-12-31', days: 2, reason: null, status: 'approved', created_at: '2025-12-01T00:00:00Z' },
+        { id: 'a', employee_id: 'e', employee_name: 'E', leave_type: 'unpaid', start_date: '2026-03-02', end_date: '2026-03-03', days: 2, half_day: false, reason: null, status: 'approved', decision_note: null, created_at: 'bad' },
+        { id: 'b', employee_id: 'e', employee_name: 'E', leave_type: 'annual', start_date: '2025-12-30', end_date: '2025-12-31', days: 2, half_day: false, reason: null, status: 'approved', decision_note: null, created_at: '2025-12-01T00:00:00Z' },
       ],
       [],
       MEMBER_E,
@@ -95,6 +96,39 @@ describe('buildLeaveModel', () => {
   });
 });
 
+describe("decision notes on the member's own rows", () => {
+  const leave = (id: string, status: LeaveRequest['status'], decision_note: string | null): LeaveRequest => ({
+    id, employee_id: 'e', employee_name: 'E', leave_type: 'annual', start_date: '2026-11-02', end_date: '2026-11-03', days: 2,
+    half_day: false, reason: null, status, decision_note, created_at: '2026-10-01T00:00:00Z',
+  });
+  const off = (id: string, status: TimeOffRequest['status'], decision_note: string | null): TimeOffRequest => ({
+    id, employee_id: 'e', employee_name: 'E', off_date: '2026-11-02', start_time: '09:00:00', end_time: '10:00:00', reason: null,
+    status, decision_note, created_at: '2026-10-01T00:00:00Z',
+  });
+
+  it('carries the note for a rejected leave request and not otherwise', () => {
+    const model = buildLeaveModel(
+      [leave('a', 'rejected', 'Team is short'), leave('b', 'approved', 'Fine'), leave('c', 'rejected', null), leave('d', 'rejected', '  ')],
+      [], MEMBER_E, TODAY,
+    );
+    if (!model.linked) throw new Error('expected linked');
+    const note = (id: string) => model.rows.find((r) => r.id === id)?.note;
+    expect(note('a')).toBe('Team is short');
+    expect(note('b')).toBeNull();
+    expect(note('c')).toBeNull();
+    expect(note('d')).toBeNull();
+  });
+
+  it('carries the note for a rejected time-off request and not otherwise', () => {
+    const model = buildTimeOffModel([off('a', 'rejected', 'Audit day'), off('b', 'pending', 'x'), off('c', 'rejected', null)], MEMBER_E, TODAY);
+    if (!model.linked) throw new Error('expected linked');
+    const note = (id: string) => model.rows.find((r) => r.id === id)?.note;
+    expect(note('a')).toBe('Audit day');
+    expect(note('b')).toBeNull();
+    expect(note('c')).toBeNull();
+  });
+});
+
 describe('buildTimeOffModel', () => {
   it("gives employee 2's rows only", async () => {
     const requests = await data.listTimeOffRequests();
@@ -113,7 +147,7 @@ describe('buildTimeOffModel', () => {
   });
 
   it('measures hours and durations from the times', () => {
-    const base = { employee_id: 'e', employee_name: 'E', reason: null, created_at: '2026-10-01T00:00:00Z' };
+    const base = { employee_id: 'e', employee_name: 'E', reason: null, decision_note: null, created_at: '2026-10-01T00:00:00Z' };
     const model = buildTimeOffModel(
       [
         { ...base, id: '1', off_date: '2026-10-03', start_time: '14:00:00', end_time: '16:30:00', status: 'approved' },
@@ -215,5 +249,65 @@ describe('buildOtModel', () => {
     expect(model.overtime.by_rate).toEqual([]);
     expect(model.rows).toEqual([]);
     noNaN(model);
+  });
+});
+
+describe('canCancelRequest', () => {
+  it('allows a pending request, whatever its date', () => {
+    expect(canCancelRequest('pending', '2026-10-01', TODAY)).toBe(true);
+    expect(canCancelRequest('pending', '2026-12-01', TODAY)).toBe(true);
+  });
+
+  it('allows an approved request only when it starts after today', () => {
+    expect(canCancelRequest('approved', '2026-10-10', TODAY)).toBe(true);
+    expect(canCancelRequest('approved', TODAY, TODAY)).toBe(false);
+    expect(canCancelRequest('approved', '2026-10-01', TODAY)).toBe(false);
+  });
+
+  it('never allows a rejected or cancelled request', () => {
+    expect(canCancelRequest('rejected', '2026-12-01', TODAY)).toBe(false);
+    expect(canCancelRequest('cancelled', '2026-12-01', TODAY)).toBe(false);
+  });
+
+  it('marks each leave and time-off row with the rule', () => {
+    const leave = (start: string, status: 'pending' | 'approved'): LeaveRequest => ({
+      id: `l-${status}-${start}`,
+      employee_id: 'e',
+      employee_name: 'E',
+      leave_type: 'annual',
+      start_date: start,
+      end_date: start,
+      days: 1,
+      half_day: false,
+      reason: null,
+      status,
+      decision_note: null,
+      created_at: '2026-10-01T00:00:00Z',
+    });
+    const model = buildLeaveModel([leave('2026-10-20', 'approved'), leave('2026-10-05', 'approved')], [], MEMBER_E, TODAY);
+    if (!model.linked) throw new Error('expected linked');
+    expect(Object.fromEntries(model.rows.map((r) => [r.id, r.cancellable]))).toEqual({
+      'l-approved-2026-10-20': true,
+      'l-approved-2026-10-05': false,
+    });
+
+    const off = (date: string, status: 'pending' | 'approved'): TimeOffRequest => ({
+      id: `t-${status}-${date}`,
+      employee_id: 'e',
+      employee_name: 'E',
+      off_date: date,
+      start_time: '09:00:00',
+      end_time: '11:00:00',
+      reason: null,
+      status,
+      decision_note: null,
+      created_at: '2026-10-01T00:00:00Z',
+    });
+    const timeOff = buildTimeOffModel([off('2026-10-20', 'pending'), off(TODAY, 'approved')], MEMBER_E, TODAY);
+    if (!timeOff.linked) throw new Error('expected linked');
+    expect(Object.fromEntries(timeOff.rows.map((r) => [r.id, r.cancellable]))).toEqual({
+      't-pending-2026-10-20': true,
+      [`t-approved-${TODAY}`]: false,
+    });
   });
 });
