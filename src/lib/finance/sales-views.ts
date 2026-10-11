@@ -5,7 +5,7 @@
  */
 import type { Slice } from '@/components/charts';
 import { toCsv } from './csv';
-import { rmShort } from './format';
+import { rm, rmShort } from './format';
 import type { EInvoiceStatus, InvoiceDisplayStatus, InvoiceListRow } from './invoices';
 import { PAYMENT_METHODS, PAYMENT_METHOD_LABELS, type PaymentInRow, type PaymentMethod } from './money';
 import {
@@ -18,6 +18,7 @@ import {
   lastMonths,
   monthOf,
   paymentCount,
+  round2,
   sum,
   thousands,
 } from './view-helpers';
@@ -79,9 +80,30 @@ function isIssued(invoice: InvoiceListRow): boolean {
   return invoice.display_status === 'sent' || invoice.display_status === 'overdue' || invoice.display_status === 'paid';
 }
 
-/** What a customer still owes on an invoice: its balance once it has gone out, nothing (null) on a draft or a void one. */
+/**
+ * What a customer still owes on an invoice: its balance once it has gone out,
+ * nothing (null) on a draft or a void one. Below zero, the customer is in
+ * credit: they have paid, or been credited, more than the invoice came to.
+ */
 export function owed(invoice: InvoiceListRow): number | null {
   return isIssued(invoice) ? invoice.balance : null;
+}
+
+/** How much the customer is in credit on an invoice: 0 unless its balance is below zero. */
+export function inCredit(invoice: InvoiceListRow): number {
+  const balance = owed(invoice);
+  return balance !== null && balance < 0 ? round2(-balance) : 0;
+}
+
+/**
+ * The Balance cell of an invoice row. A draft or a void invoice owes nothing
+ * and shows a dash. A customer in credit is never shown as a negative amount:
+ * the cell says how much they are in credit.
+ */
+export function balanceText(invoice: InvoiceListRow): string {
+  const balance = owed(invoice);
+  if (balance === null) return '—';
+  return balance < 0 ? `${rm(-balance)} in credit` : rm(balance);
 }
 
 /** Only money that has actually arrived counts: not voided, not half-written. */
@@ -116,6 +138,7 @@ export function invoicesView(invoices: InvoiceListRow[], payments: PaymentInRow[
 
   return {
     stats: [
+      // Relies on the database: an invoice that reads Sent or Overdue always has a balance above zero (one in credit reads Paid).
       { label: 'Total receivable', value: rmShort(sum(open, (i) => i.balance)), delta: count(open.length, 'open invoice'), deltaTone: 'flat' },
       { label: 'Due this week', value: rmShort(sum(dueThisWeek, (i) => i.balance)), delta: count(dueThisWeek.length, 'invoice'), deltaTone: 'flat' },
       { label: 'Overdue', value: rmShort(sum(overdue, (i) => i.balance)), delta: count(overdue.length, 'invoice'), deltaTone: overdue.length ? 'down' : 'flat' },
@@ -188,10 +211,14 @@ export function invoiceActions(invoice: InvoiceListRow, canTakePayment: boolean)
   return [...pay, 'einvoice', 'void'];
 }
 
-/** The invoices table as a CSV file. Amounts are numbers, so a spreadsheet can add them up. */
+/**
+ * The invoices table as a CSV file. Amounts are numbers, so a spreadsheet can
+ * add them up: Total − Paid − Credited + Refunded is the Balance, which is
+ * below zero for a customer in credit.
+ */
 export function invoicesCsv(invoices: InvoiceListRow[]): string {
   return toCsv(
-    ['No.', 'Date', 'Customer', 'Due', 'Total', 'Paid', 'Balance', 'Status', 'e-Invois'],
+    ['No.', 'Date', 'Customer', 'Due', 'Total', 'Paid', 'Credited', 'Refunded', 'Balance', 'Status', 'e-Invois'],
     invoices.map((i) => [
       i.invoice_no,
       i.invoice_date,
@@ -199,6 +226,8 @@ export function invoicesCsv(invoices: InvoiceListRow[]): string {
       i.due_date,
       i.total,
       i.paid,
+      i.credited,
+      i.refunded,
       owed(i),
       INVOICE_STATUS_LABELS[i.display_status],
       EINVOICE_STATUS_LABELS[i.einvoice_status],
