@@ -78,7 +78,7 @@ export const HIRE_WRITE_TOOL_NAMES = ['createJob', 'updateJob', 'setJobStatus', 
 /** The HR data an agent reads, who is asking, and whether they may change it. */
 export type PeopleAccess = { data: PeopleData; viewer: PeopleViewer; write?: PeopleWrite };
 
-/** HR tools that change data: employees, departments, leave, time-off, claims, overtime, attendance, public holidays and attendance settings. */
+/** HR tools that change data: employees, departments, leave, time-off, claims, overtime, attendance, public holidays, attendance settings and payroll drafts. */
 export const PEOPLE_WRITE_TOOL_NAMES = [
   'createEmployee',
   'updateEmployee',
@@ -109,6 +109,12 @@ export const PEOPLE_WRITE_TOOL_NAMES = [
   'saveHoliday',
   'removeHoliday',
   'saveAttendanceSettings',
+  'runPayroll',
+  'recalculatePayroll',
+  'savePayslipLine',
+  'removePayslipLine',
+  'setPayslipStatutory',
+  'removePayslip',
 ] as const;
 
 /**
