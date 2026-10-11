@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { approvalDetail, approvalTitle, collectNames } from '@/lib/chat/change-titles';
+import { approvalDetail, approvalTitle, collectNames, nameIn } from '@/lib/chat/change-titles';
 
 const ID = '33333333-3333-4333-8333-333333333333';
 const names = collectNames([{ tool: 'listJobs', output: { total: 1, jobs: [{ id: ID, name: 'Sales Executive' }] } }]);
@@ -94,5 +94,80 @@ describe('the application form change', () => {
     // One change is already the title.
     expect(approvalDetail('updateApplicationForm', { require_cv: true })).toBeNull();
     expect(approvalDetail('updateApplicationForm', null)).toBeNull();
+  });
+});
+
+describe('approval cards for an application', () => {
+  const APP = '44444444-4444-4444-8444-444444444444';
+  const OTHER = '55555555-5555-4555-8555-555555555555';
+  const STRANGER = '66666666-6666-4666-8666-666666666666';
+  const listed = {
+    tool: 'listApplications',
+    output: {
+      total: 2,
+      applications: [
+        { id: APP, candidate: 'Aina Rahman', job: 'Barista', stage: 'screening', outcome: 'active' },
+        { id: OTHER, candidate: 'Hafiz Omar', job: 'Cashier', stage: 'applied', outcome: 'active' },
+      ],
+    },
+  };
+  const found = nameIn([listed]);
+  const nothing = nameIn([]);
+
+  it('names an application from a listApplications row, as candidate (job)', () => {
+    const known = collectNames([listed]);
+    expect(known[`application:${APP}`]).toBe('Aina Rahman (Barista)');
+    expect(known[`application:${OTHER}`]).toBe('Hafiz Omar (Cashier)');
+  });
+  it('does not turn a row of another tool into an application name', () => {
+    const other = collectNames([{ tool: 'listJobs', output: { jobs: [{ id: APP, name: 'Sales Executive', candidate: 'X', job: 'Y' }] } }]);
+    expect(other[`application:${APP}`]).toBeUndefined();
+    expect(other[`job:${APP}`]).toBe('Sales Executive');
+  });
+  it('words a move', () => {
+    expect(approvalTitle('moveApplication', { id: APP, stage: 'interview' }, found)).toBe('Move Aina Rahman (Barista) to Interview?');
+    expect(approvalTitle('moveApplication', { id: APP, stage: 'offer' }, found)).toBe('Move Aina Rahman (Barista) to Offer?');
+  });
+  it('words a rejection and a withdrawal, with the reason on the detail line', () => {
+    expect(approvalTitle('rejectApplication', { id: APP, outcome: 'rejected' }, found)).toBe('Reject Aina Rahman (Barista)?');
+    expect(approvalTitle('rejectApplication', { id: APP, outcome: 'withdrawn' }, found)).toBe('Mark Aina Rahman (Barista) as withdrawn?');
+    expect(approvalDetail('rejectApplication', { id: APP, outcome: 'rejected', reason: 'experience' })).toBe('Reason: Not enough experience');
+    expect(approvalDetail('rejectApplication', { id: APP, outcome: 'rejected', reason: 'not_reachable' })).toBe('Reason: Could not reach the candidate');
+    expect(approvalDetail('rejectApplication', { id: APP, outcome: 'rejected' })).toBeNull();
+    expect(approvalDetail('rejectApplication', { id: APP, outcome: 'rejected', reason: null })).toBeNull();
+    expect(approvalDetail('rejectApplication', { id: APP, outcome: 'rejected', reason: 'made up' })).toBeNull();
+  });
+  it('words a reopen and a rating', () => {
+    expect(approvalTitle('reopenApplication', { id: APP }, found)).toBe('Reopen Aina Rahman (Barista)?');
+    expect(approvalTitle('rateApplication', { id: APP, rating: 4 }, found)).toBe('Rate Aina Rahman (Barista) 4 out of 5?');
+    expect(approvalTitle('rateApplication', { id: APP, rating: null }, found)).toBe('Clear the rating of Aina Rahman (Barista)?');
+  });
+  it('puts the grounds for a rating on the detail line, and nothing when there are none', () => {
+    expect(approvalDetail('rateApplication', { id: APP, rating: 3, basis: 'Six years in B2B sales, but no key account work.' }))
+      .toBe('Why: Six years in B2B sales, but no key account work.');
+    // Trimmed, and one paragraph whatever the line breaks.
+    expect(approvalDetail('rateApplication', { id: APP, rating: 3, basis: '  Six years in sales.\n\n  No tender work.  ' }))
+      .toBe('Why: Six years in sales. No tender work.');
+    expect(approvalDetail('rateApplication', { id: APP, rating: 3 })).toBeNull();
+    expect(approvalDetail('rateApplication', { id: APP, rating: 3, basis: '   ' })).toBeNull();
+    expect(approvalDetail('rateApplication', { id: APP, rating: 3, basis: null })).toBeNull();
+    expect(approvalDetail('rateApplication', { id: APP, rating: 3, basis: 7 })).toBeNull();
+    // Only a rating carries one.
+    expect(approvalDetail('moveApplication', { id: APP, stage: 'offer', basis: 'x' })).toBeNull();
+    expect(approvalDetail('reopenApplication', { id: APP, basis: 'x' })).toBeNull();
+  });
+  it('says "this application" when the conversation never listed it', () => {
+    expect(approvalTitle('moveApplication', { id: STRANGER, stage: 'offer' }, found)).toBe('Move an application that was not in the list above to Offer?');
+    expect(approvalTitle('rejectApplication', { id: STRANGER, outcome: 'rejected' }, nothing)).toBe('Reject an application that was not in the list above?');
+    expect(approvalTitle('rejectApplication', { id: STRANGER, outcome: 'withdrawn' }, nothing)).toBe('Mark an application that was not in the list above as withdrawn?');
+    expect(approvalTitle('reopenApplication', { id: STRANGER }, nothing)).toBe('Reopen an application that was not in the list above?');
+    expect(approvalTitle('rateApplication', { id: STRANGER, rating: 2 }, nothing)).toBe('Rate an application that was not in the list above 2 out of 5?');
+    expect(approvalTitle('rateApplication', { id: STRANGER, rating: null }, nothing)).toBe('Clear the rating of an application that was not in the list above?');
+    expect(approvalTitle('moveApplication', { id: STRANGER, stage: 'offer' })).toBe('Move an application that was not in the list above to Offer?');
+  });
+  it('also learns the name from the row a change tool returned', () => {
+    const results = [{ tool: 'rateApplication', output: { ok: true, data: { id: APP, candidate: 'Aina Rahman', job: 'Barista' } } }];
+    expect(collectNames(results)[`application:${APP}`]).toBe('Aina Rahman (Barista)');
+    expect(approvalTitle('reopenApplication', { id: APP }, nameIn(results))).toBe('Reopen Aina Rahman (Barista)?');
   });
 });

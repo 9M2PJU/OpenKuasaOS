@@ -93,7 +93,7 @@ export function runKasturi(
 
 /**
  * "Lekir, your hiring lead": the same single agent as Jebat, holding the
- * hiring lookups, plus (for someone who may write) job changes that each
+ * hiring lookups, plus (for someone who may write) job, careers page, application form and application changes that each
  * wait for the user's approval.
  */
 export function runLekir(
@@ -156,14 +156,14 @@ const TEAM_AREA = {
   reach:
     'marketing: ads and campaigns, spend, leads (finding, adding and editing them, and promoting a lead to a CRM contact), lead forms, creatives, appointments and ad settings',
   crm: 'the CRM: contacts, deals, pipelines and their stages, follow-ups (reminders to get back to a contact) and the calendar. A lead is not a contact yet: anything about a lead goes to Jebat',
-  hire: 'hiring: job openings, candidates and their applications, the hiring funnel, interviews, the talent pool and time to hire. Job openings can be created, edited, opened, paused, closed and deleted. Existing staff, leave and payroll are not hiring. It can read one candidate\'s uploaded CV and give a verdict on it',
+  hire: 'hiring: job openings, candidates and their applications, the hiring funnel, interviews, the talent pool and time to hire. Job openings can be created, edited, opened, paused, closed and deleted. Applications can be moved, rejected, reopened and rated, one at a time. Existing staff, leave and payroll are not hiring. It can read one candidate\'s uploaded CV and give a verdict on it',
   people: 'HR: existing staff, leave, claims, overtime, attendance, payroll and performance. Lookups only for now. Hiring new people is not HR',
 } as const;
 
 /**
  * Tuah, the cross-app assistant on the Command page and the floating button.
  * It has the marketing tools Jebat has, Kasturi's CRM tools (lookups, and
- * changes behind an approval) and Lekir's hiring tools (lookups, and job changes behind an approval), runs on the model those rules were tuned on,
+ * changes behind an approval) and Lekir's hiring tools (lookups, and job and application changes behind an approval), runs on the model those rules were tuned on,
  * and says so rather than inventing data from the products it cannot see yet.
  */
 export function runTuah(
@@ -181,8 +181,8 @@ export function runTuah(
    */
   team?: Omit<TeamContext, 'apiKey'> | null,
   /**
-   * The workspace's hiring data. The lookups need no workspace role; the job
-   * change tools are added only when `hire.write.canWrite` is set, and each
+   * The workspace's hiring data. The lookups need no workspace role; the change
+   * tools (jobs, careers page, application form, applications) are added only when `hire.write.canWrite` is set, and each
    * waits for the user's approval.
    */
   hire?: HireAccess | null,

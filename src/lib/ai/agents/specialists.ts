@@ -73,6 +73,10 @@ export function delegationForModel(output: Delegation): string {
   return lines.join('\n');
 }
 
+/** The four application changes: the id must have been seen as an application, not just anywhere. */
+const APPLICATION_CHANGES = new Set(['moveApplication', 'rejectApplication', 'reopenApplication', 'rateApplication']);
+const ONE_APPLICATION_CHANGE = 'One application change at a time. One is already prepared for approval.';
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Every id a change refers to, wherever it sits in the input. */
@@ -116,6 +120,11 @@ function specialistTools(
         'Calling this only PREPARES the change: the user is shown an Approve card and nothing is saved until they approve.',
       inputSchema: change.inputSchema as z.ZodType,
       execute: async (input: unknown) => {
+        // A specialist stops after the step in which it prepared a change, but one step can hold
+        // several calls. Each card is a decision about one person: only the first is prepared.
+        if (APPLICATION_CHANGES.has(name) && prepared.length > 0) {
+          return { prepared: false, error: ONE_APPLICATION_CHANGE };
+        }
         // An id must have come from somewhere: a lookup just now, an earlier
         // turn, or the task. One that appears nowhere was made up, and a
         // change prepared with it would fail after the user approved it.
@@ -131,6 +140,19 @@ function specialistTools(
               `You have not looked up ${invented.join(', ')}. Never guess an id: use a lookup tool ` +
               'to list the item and get its real id, then prepare the change again.',
           };
+        }
+        if (APPLICATION_CHANGES.has(name)) {
+          const id = (input as { id?: unknown } | null)?.id;
+          const asApplication =
+            typeof id === 'string' && (team.names?.[`application:${id}`] || nameIn(results)(id, 'application'));
+          if (!asApplication) {
+            return {
+              prepared: false,
+              error:
+                `You have not looked up ${String(id)} as an application. Never guess an id: use listApplications ` +
+                'to find the application and get its real id, then prepare the change again.',
+            };
+          }
         }
         const proposal: Proposal = {
           id: crypto.randomUUID().slice(0, 8),
@@ -242,7 +264,7 @@ function askTool(product: ProductToolkit, team: TeamContext): Tool {
 const AREA: Record<ProductToolkit['key'], string> = {
   reach: 'marketing (ads, campaigns, creatives, leads, lead forms, appointments, ad settings)',
   crm: 'the CRM (contacts, deals, pipelines and their stages)',
-  hire: 'hiring (jobs, candidates, applications, the hiring funnel, interviews, the talent pool; it can read one candidate\'s uploaded CV and give a verdict on it)',
+  hire: 'hiring (jobs, candidates, applications, the hiring funnel, interviews, the talent pool; it can read one candidate\'s uploaded CV and give a verdict on it; it can prepare moving, rejecting, reopening or rating one application at a time)',
   people: 'HR (existing staff, leave, claims, overtime, attendance, payroll, performance)',
 };
 
