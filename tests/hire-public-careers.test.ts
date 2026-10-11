@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
-  careersJobPath, careersPath, careersUrl, formatLongDate, formatSalary, getPublicCareers, getPublicJob,
+  careersJobPath, careersPath, careersUrl, formatLongDate, formatSalary, getPublicCareers, getPublicJob, readPublicJob,
 } from '@/lib/hire/public-careers';
 
 const ORG = '11111111-1111-4111-8111-111111111111';
@@ -58,6 +58,13 @@ describe('getPublicJob', () => {
     });
     expect(c.rpc).toHaveBeenCalledWith('get_public_job', { p_org_id: ORG, p_job_id: JOB });
   });
+  it('maps the four form requirements, and reads their absence as all false', async () => {
+    const asked = { require_cv: true, require_cover_letter: false, ask_portfolio: true, ask_expected_salary: false };
+    expect((await getPublicJob(client([{ ...jobRow, ...asked }]).asClient, ORG, JOB))?.form).toEqual(asked);
+    expect((await getPublicJob(client([jobRow]).asClient, ORG, JOB))?.form).toEqual({
+      require_cv: false, require_cover_letter: false, ask_portfolio: false, ask_expected_salary: false,
+    });
+  });
   it('is null for no row, a failed call, or a bad id (without calling)', async () => {
     expect(await getPublicJob(client([]).asClient, ORG, JOB)).toBeNull();
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -69,6 +76,37 @@ describe('getPublicJob', () => {
     expect(await getPublicJob(c.asClient, ORG, 'not-a-uuid')).toBeNull();
     expect(await getPublicJob(c.asClient, 'x', JOB)).toBeNull();
     expect(c.rpc).not.toHaveBeenCalled();
+  });
+});
+
+describe('readPublicJob', () => {
+  const jobRow = { ...row, description: 'Make coffee.', salary_min_cents: null, salary_max_cents: null };
+  it('found: the job, as getPublicJob gives it', async () => {
+    const c = client([jobRow]);
+    const answer = await readPublicJob(c.asClient, ORG, JOB);
+    expect(answer).toEqual({ state: 'found', job: await getPublicJob(client([jobRow]).asClient, ORG, JOB) });
+    expect(answer).toMatchObject({ job: { id: JOB, orgName: 'Kedai Kopi' } });
+    expect(c.rpc).toHaveBeenCalledWith('get_public_job', { p_org_id: ORG, p_job_id: JOB });
+  });
+  it('missing: no row, or a row that cannot be a job', async () => {
+    expect(await readPublicJob(client([]).asClient, ORG, JOB)).toEqual({ state: 'missing' });
+    expect(await readPublicJob(client(null).asClient, ORG, JOB)).toEqual({ state: 'missing' });
+    expect(await readPublicJob(client([{ ...jobRow, title: null }]).asClient, ORG, JOB)).toEqual({ state: 'missing' });
+    expect(await readPublicJob(client([{ ...jobRow, org_name: null }]).asClient, ORG, JOB)).toEqual({ state: 'missing' });
+  });
+  it('missing, without a call: an id that is not a UUID', async () => {
+    const c = client([jobRow]);
+    expect(await readPublicJob(c.asClient, ORG, 'not-a-uuid')).toEqual({ state: 'missing' });
+    expect(await readPublicJob(c.asClient, 'x', JOB)).toEqual({ state: 'missing' });
+    expect(c.rpc).not.toHaveBeenCalled();
+  });
+  it('failed: an error in the answer, even beside a valid row, or a call that threw', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(await readPublicJob(client([jobRow], { message: 'boom' }).asClient, ORG, JOB)).toEqual({ state: 'failed' });
+    const thrown = { rpc: vi.fn().mockRejectedValue(new Error('network down')) } as never;
+    expect(await readPublicJob(thrown, ORG, JOB)).toEqual({ state: 'failed' });
+    expect(spy).toHaveBeenCalledTimes(2);
+    spy.mockRestore();
   });
 });
 
