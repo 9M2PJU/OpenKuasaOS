@@ -55,7 +55,7 @@ begin
       ('hr_claims','personal'), ('hr_overtime_records','personal'),
       ('hr_attendance_days','personal'), ('hr_timesheet_entries','personal'), ('hr_shifts','personal'), ('hr_public_holidays','shared'),
       ('hr_payroll_runs','hr'), ('hr_payslips','paid'), ('hr_payslip_lines','lines'), ('hr_payment_vouchers','hr'),
-      ('hr_goals','personal'), ('hr_scorecards','personal'), ('hr_reviews','released'), ('hr_trainings','shared'), ('hr_training_enrolments','personal'),
+      ('hr_goals','personal'), ('hr_scorecards','released'), ('hr_reviews','released'), ('hr_trainings','shared'), ('hr_training_enrolments','personal'),
       ('hr_announcements','published'), ('hr_documents','personal'), ('hr_letters','issued'), ('hr_settings','hr')
     ) as x(t, k)
   loop
