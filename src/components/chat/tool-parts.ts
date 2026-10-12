@@ -18,6 +18,8 @@ import {
 } from '@/lib/chat/delegation';
 import {
   Briefcase,
+  CalendarCheck,
+  CalendarClock,
   CalendarDays,
   ClipboardList,
   Coins,
@@ -66,6 +68,9 @@ function cvCandidate(output: unknown): string | null {
     : null;
 }
 
+/** What a specialist's card says while a change is being prepared. */
+const PREPARING = 'Preparing a change…';
+
 const TOOL_META: Record<string, ToolMeta> = {
   getAdsOverview: { label: 'Ads overview', Icon: PieChart },
   getCampaigns: { label: 'Campaigns', Icon: Megaphone },
@@ -92,6 +97,15 @@ const TOOL_META: Record<string, ToolMeta> = {
   listTalentPool: { label: 'Talent pool', Icon: UserSearch },
   listCandidates: { label: 'Candidates', Icon: Users },
   listInterviews: { label: 'Interviews', Icon: CalendarDays },
+  // The six interview changes. A change tool otherwise has no entry and is named for what it does; these have one,
+  // for the icon. `running` keeps a specialist's card saying a change is being prepared: that card takes a tool with
+  // no entry to be a change, and would say "Looking up schedule interview…" of one that has an entry.
+  scheduleInterview: { label: 'Schedule interview', Icon: CalendarDays, running: PREPARING },
+  recordPastInterview: { label: 'Record a past interview', Icon: CalendarCheck, running: PREPARING },
+  rescheduleInterview: { label: 'Reschedule or edit interview', Icon: CalendarClock, running: PREPARING },
+  cancelInterview: { label: 'Cancel interview', Icon: CalendarDays, running: PREPARING },
+  setInterviewOutcome: { label: 'Interview outcome', Icon: CalendarCheck, running: PREPARING },
+  reopenInterview: { label: 'Interview scheduled again', Icon: CalendarDays, running: PREPARING },
   getTimeToHire: { label: 'Time to hire', Icon: Timer },
   getSourceBreakdown: { label: 'Candidate sources', Icon: Waypoints },
   getPeopleOverview: { label: 'Team overview', Icon: PieChart },
@@ -136,7 +150,7 @@ function humanize(name: string): string {
 
 export function toolMeta(name: string): ToolMeta & { isFallback: boolean } {
   const known = TOOL_META[name];
-  // Tools with no entry are the change tools, named for what they do.
+  // A tool with no entry is a change tool, named for what it does. (The six interview changes have entries, for their icons.)
   return known
     ? { ...known, isFallback: false }
     : { label: humanize(name) || 'Tool', Icon: Wrench, isFallback: true };
@@ -186,9 +200,20 @@ const REFUSAL_LINES: [start: string, line: string | null][] = [
   ['One talent pool change at a time.', 'Only one talent pool change is prepared at a time, and one was already prepared. Ask for this one again afterwards.'],
   ['This candidate is not in the talent pool', 'This person is not in the talent pool, so no move was prepared. Add them to the talent pool first, then ask again.'],
   ['A candidate with the same name appeared ', 'A last check stopped this, because someone else with the same name had appeared. Nothing was changed. Ask for it again.'],
+  ['One interview change at a time.', 'Only one interview change is prepared at a time, and one was already prepared. Ask for this one again afterwards.'],
+  ['That link was not given by the user', 'That link was not one you gave since the last interview card, so nothing was prepared: give the link again in your message, or ask again without one.'],
+  ['This interview was changed after the card was shown', 'A last check stopped this, because the interview had been changed since the card was shown. Nothing was changed. Ask for it again.'],
   ['Two candidates called ', null],
   ['Two applications from someone called ', null],
+  ['The date and time sent are the ones this interview already has', 'The time given was the time this interview already has, so nothing was prepared. Ask again for only what should change.'],
+  ['The interviewer\'s name holds a link', 'The interviewer\'s name held a link, so nothing was prepared. A link goes in the Place or link field: give it as the place and ask again, or type it there on the Interviews screen.'],
+  ['That link has hidden characters in it', 'That link had hidden characters in it, so nothing was prepared: type the link out by hand in your message, or ask again without one.'],
+  ['Nothing would change:', null],
+  ['Two interviews with ', null],
+  ['This interview no longer exists', null],
+  ['The application this interview belongs to is no longer active', null],
   ['I could not check ', null],
+  ['This change is no longer waiting for approval', 'This change is no longer waiting for approval: it was already answered, or it waited too long. Nothing was saved. Ask for it again if you still want it.'],
   ['Changes cannot be prepared right now', 'Changes cannot be prepared right now, so nothing was put up for approval. Try again in a few minutes.'],
 ];
 export function refusalForUser(reason: string): string {

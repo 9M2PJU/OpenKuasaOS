@@ -24,8 +24,8 @@ import { subAgentSystem } from '@/lib/ai/agents/prompts';
 import { prepareCvStep } from '@/lib/ai/hire-tools';
 import {
   AMBIGUOUS_DELETION,
+  CHANGE_NOT_CHECKED,
   HIRE_DELETE_TOOL_NAMES,
-  ambiguousLookup,
   ONE_DELETION,
   cardDecision,
   cardShown,
@@ -44,6 +44,19 @@ import {
   poolCardDecision,
   poolNotLookedUp,
 } from '@/lib/ai/hire-pool-gate';
+import {
+  AMBIGUOUS_INTERVIEW_CHANGE,
+  HIRE_INTERVIEW_TOOL_NAMES,
+  ONE_INTERVIEW_CHANGE,
+  actsOnApplication,
+  ambiguousFor,
+  interviewCardDecision,
+  interviewLinkProblem,
+  interviewNotLookedUp,
+  interviewTarget,
+  rejectedByUser,
+  sameInterviewTarget,
+} from '@/lib/ai/hire-interview-gate';
 import type { ProductToolkit } from '@/lib/ai/products';
 import { logModelCall, logModelError, modelErrorCode } from '@/lib/ai/call-log';
 import { getModel, pickModelId } from '@/lib/ai/provider';
@@ -118,12 +131,16 @@ const ONE_CANDIDATE_CHANGE = 'One candidate change at a time. One is already pre
 const DELETIONS = new Set<string>(HIRE_DELETE_TOOL_NAMES);
 /** The two talent pool changes: held to one a turn in the same way, and counted apart from deletions. */
 const POOL_CHANGES = new Set<string>(HIRE_POOL_TOOL_NAMES);
+/** The six interview changes: held to one a turn in the same way, and counted apart from the other two. */
+const INTERVIEW_CHANGES = new Set<string>(HIRE_INTERVIEW_TOOL_NAMES);
 
-/** The kinds of change held to one a turn. Each is counted on its own: a deletion and a pool change may share a turn. */
-type Limited = 'deletion' | 'pool';
+/** The kinds of change held to one a turn. Each is counted on its own: a deletion, a pool change and an interview change may share a turn. */
+type Limited = 'deletion' | 'pool' | 'interview';
 const limitedKind = (action: string): Limited | null =>
-  DELETIONS.has(action) ? 'deletion' : POOL_CHANGES.has(action) ? 'pool' : null;
-const ONE_A_TURN: Record<Limited, string> = { deletion: ONE_DELETION, pool: ONE_POOL_CHANGE };
+  DELETIONS.has(action) ? 'deletion' : POOL_CHANGES.has(action) ? 'pool' : INTERVIEW_CHANGES.has(action) ? 'interview' : null;
+const ONE_A_TURN: Record<Limited, string> = { deletion: ONE_DELETION, pool: ONE_POOL_CHANGE, interview: ONE_INTERVIEW_CHANGE };
+/** What each kind is refused with after a lookup that said several rows match. */
+const AMBIGUOUS: Record<Limited, string> = { deletion: AMBIGUOUS_DELETION, pool: AMBIGUOUS_POOL_CHANGE, interview: AMBIGUOUS_INTERVIEW_CHANGE };
 
 /**
  * What the turn in progress holds, for the rules about a change held to one a turn. A turn is everything after the
@@ -154,9 +171,12 @@ export function idsIn(value: unknown, depth = 0): string[] {
   return Object.values(value).flatMap((inner) => idsIn(inner, depth + 1));
 }
 
-/** Every id that a lookup among these returned while saying its name fits several rows. */
+/**
+ * Every id that a lookup among these returned while saying its name fits several rows. A result that says which
+ * rows it means (an interview list with two of one person's) holds back those alone; any other, every id in it.
+ */
 function ambiguousIn(results: ToolResult[]): string[] {
-  return [...new Set(results.flatMap((r) => idsIn(r.output).filter((id) => ambiguousLookup([r.output], id))))];
+  return [...new Set(results.flatMap((r) => idsIn(r.output).filter((id) => ambiguousFor([r.output], id))))];
 }
 
 /**
@@ -166,8 +186,8 @@ function ambiguousIn(results: ToolResult[]): string[] {
  */
 function turnStateFrom(messages: readonly ModelMessage[], proposals: Map<string, Proposal>): TurnState {
   const state: TurnState = {
-    prepared: { deletion: new Set(), pool: new Set() },
-    shown: { deletion: new Map(), pool: new Map() },
+    prepared: { deletion: new Set(), pool: new Set(), interview: new Set() },
+    shown: { deletion: new Map(), pool: new Map(), interview: new Map() },
     ambiguous: new Set(),
   };
   const turn = thisTurn(messages);
@@ -200,19 +220,41 @@ function turnStateFrom(messages: readonly ModelMessage[], proposals: Map<string,
   return state;
 }
 
+/** The changes specialists reported preparing, by id, as the reports in these messages hold them. */
+function describedIn(messages: readonly ModelMessage[]): Map<string, Proposal> {
+  const found = new Map<string, Proposal>();
+  for (const message of messages) {
+    if (message.role !== 'tool') continue;
+    for (const part of partsOf(message)) {
+      if (part.type !== 'tool-result' || typeof part.toolName !== 'string' || !part.toolName.startsWith(ASK_PREFIX)) continue;
+      const output = part.output as { type?: unknown; value?: unknown } | null | undefined;
+      const report = output?.type === 'json' ? output.value : null;
+      if (isDelegation(report)) for (const proposal of report.proposals) found.set(proposal.id, proposal);
+    }
+  }
+  return found;
+}
+
 /**
  * The approval for `applyChange`: a card for the user, except a change of a kind held to one a turn (a deletion, a
- * talent pool change) beside another of the same kind in the same turn, which is denied before a card exists.
+ * talent pool change, an interview change) beside another of the same kind in the same turn, which is denied before a card exists.
  * "Another" is one a specialist prepared in this turn or one already put to the user in it, under a different
  * proposal; the same proposal asked for again under a new call is another too. The SDK asks again about a call the
  * user approved, when their answer arrives: same proposal, same call, so it passes.
  */
-function applyGate(products: ProductToolkit[], team: TeamContext, turn: TurnState): DeletionGate {
+function applyGate(products: ProductToolkit[], team: TeamContext, turn: TurnState, gated: Set<string>): DeletionGate {
   return async (input, { toolCallId, messages }) => {
     const id = (input as { proposalId?: unknown } | null)?.proposalId;
     const proposal = typeof id === 'string' ? team.proposals.get(id) : undefined;
     const kind = proposal ? limitedKind(proposal.action) : null;
+    // A change of no limited kind has no check here: its record was seen, and it goes to the user as before.
+    if (proposal && !kind) gated.add(proposal.id);
     if (!proposal || !kind) return 'user-approval';
+    // A record that was already answered (approved, rejected or lapsed) keeps its tool and loses its arguments. There
+    // is then no row to check and nothing that could run: said as what it is, before any check could read "no id" as
+    // "the interview is gone". It was not shown in this turn, so it is not the turn's one.
+    // The other way for the person: ask for the change again; it is prepared anew.
+    if (proposal.input === null || proposal.input === undefined) return { type: 'denied', reason: NOT_WAITING };
     const [prepared, shown] = [turn.prepared[kind], turn.shown[kind]];
     const another =
       [...prepared, ...shown.keys()].some((other) => other !== proposal.id) ||
@@ -226,7 +268,10 @@ function applyGate(products: ProductToolkit[], team: TeamContext, turn: TurnStat
     const decision =
       kind === 'deletion'
         ? (product?.checkDeletion ? cardDecision(await product.checkDeletion(proposal.action, target), was) : 'user-approval')
-        : (product?.checkPoolChange ? poolCardDecision(await product.checkPoolChange(proposal.action, target), was) : 'user-approval');
+        : kind === 'pool'
+          ? (product?.checkPoolChange ? poolCardDecision(await product.checkPoolChange(proposal.action, target), was) : 'user-approval')
+          // The whole input, not an id: two of the six name an application and four an interview, and the check knows which.
+          : (product?.checkInterviewChange ? interviewCardDecision(await product.checkInterviewChange(proposal.action, proposal.input), was) : 'user-approval');
     if (typeof decision === 'object' && decision.type === 'denied') {
       // Stopped after the user's yes (the card had been shown): it will not run, so it stops being the turn's one,
       // and what the specialist prepares in its place can reach a card. One the user rejected, or that ran, stays.
@@ -237,6 +282,8 @@ function applyGate(products: ProductToolkit[], team: TeamContext, turn: TurnStat
       return decision;
     }
     shown.set(proposal.id, toolCallId);
+    // The record was seen and every check of its kind ran on it in this request: only now may `apply` take it.
+    gated.add(proposal.id);
     return decision;
   };
 }
@@ -253,6 +300,8 @@ function specialistTools(
   prepared: Proposal[],
   given: string,
   turn: TurnState,
+  /** The conversation as Tuah's request received it: where a link the user typed is. */
+  messages: readonly ModelMessage[],
 ): ToolSet {
   const tools: ToolSet = {};
 
@@ -286,6 +335,11 @@ function specialistTools(
         // Read here, with the other wait, so everything below still runs without a pause.
         const checkedPool = POOL_CHANGES.has(name)
           ? await product.checkPoolChange?.(name, (input as { id?: unknown } | null)?.id)
+          : undefined;
+        // The same for an interview change: which interview it is, and whether another could be taken for it.
+        // Read here, with the other waits, so everything below still runs without a pause.
+        const checkedInterview = INTERVIEW_CHANGES.has(name)
+          ? await product.checkInterviewChange?.(name, input)
           : undefined;
         // A specialist stops after the step in which it prepared a change, but one step can hold
         // several calls. Each card is a decision about one person: only the first is prepared.
@@ -372,18 +426,65 @@ function specialistTools(
             return { prepared: false, error: jobNotLookedUp(jobId) };
           }
         }
+        if (INTERVIEW_CHANGES.has(name)) {
+          // A new interview names an application, from listApplications; the other four name an interview, from
+          // listInterviews or from the result of the change that made it. In this delegation or an earlier turn;
+          // never an id seen as the other kind.
+          const id = interviewTarget(name, input);
+          if (actsOnApplication(name)) {
+            const asApplication =
+              typeof id === 'string' && (team.names?.[`application:${id}`] || nameIn(results)(id, 'application'));
+            if (!asApplication) {
+              return { prepared: false, error: notLookedUp('application', id) };
+            }
+          } else {
+            const asInterview =
+              typeof id === 'string' && (team.names?.[`interview:${id}`] || nameIn(results)(id, 'interview'));
+            if (!asInterview) {
+              return { prepared: false, error: interviewNotLookedUp(id) };
+            }
+          }
+        }
         // A lookup in this turn that holds the id and says several rows match: the model must ask, not choose.
-        const target = (input as { id?: unknown } | null)?.id;
+        const target = INTERVIEW_CHANGES.has(name) ? interviewTarget(name, input) : (input as { id?: unknown } | null)?.id;
         if (
           limited &&
-          ((typeof target === 'string' && turn.ambiguous.has(target)) || ambiguousLookup(results.map((r) => r.output), target))
+          ((typeof target === 'string' && turn.ambiguous.has(target)) || ambiguousFor(results.map((r) => r.output), target))
         ) {
-          return { prepared: false, error: limited === 'deletion' ? AMBIGUOUS_DELETION : AMBIGUOUS_POOL_CHANGE };
+          return { prepared: false, error: AMBIGUOUS[limited] };
         }
+        // A link in the place must be one somebody gave: typed by the user since the last interview card was shown to
+        // them, or already the place of the very interview being changed, as a lookup of this specialist returned
+        // it. Not `given`: the task Tuah wrote, and Tuah's words in the transcript, are not the user typing. Not a
+        // link typed for an earlier interview, and not another interview's. Not the rest of a lookup: a cover letter
+        // is a stranger's text. Here a card is an `applyChange` call for an interview change a specialist prepared.
+        // The other way for the person: give the link again in their next message, or add it on the Interviews screen.
+        // A card the user rejected for this very application or interview does not close it: a correction keeps the link.
+        const rejected = rejectedByUser(messages);
+        const wasInterviewCard = (call: { toolName?: unknown; toolCallId?: unknown; input?: unknown }) => {
+          const id = call.toolName === APPLY_TOOL ? (call.input as { proposalId?: unknown } | null | undefined)?.proposalId : undefined;
+          // Whether it was an interview change is the server's record's to say, when there is one. A record is not
+          // kept for ever (old ones are cleared, and a failed read answers nothing), and a missing record must
+          // never read as "no card was shown": the kind is then taken from the specialist's own report in the
+          // conversation, as it was before records were kept. That report comes back through the browser; a forged
+          // one could at most keep that user's own link, for a card that still shows it and still needs their yes.
+          const reported = typeof id === 'string' ? describedIn(messages).get(id) : undefined;
+          const shown = (typeof id === 'string' ? team.proposals.get(id) : undefined) ?? reported;
+          if (!shown || !INTERVIEW_CHANGES.has(shown.action)) return false;
+          if (!rejected.has(call.toolCallId)) return true;
+          // A record that was answered no longer holds its arguments (proposal-store.ts). Which row the rejected
+          // card was about is then read from the report too, and all it can do is keep the link for the same row.
+          const was = shown.input ?? (reported?.action === shown.action ? reported.input : null);
+          return !sameInterviewTarget(shown.action, was, name, input);
+        };
+        // And the interviewer is a name: a link in it would reach the candidate unchecked, so it is refused outright.
+        const linked = INTERVIEW_CHANGES.has(name) ? interviewLinkProblem(messages, name, input, results, wasInterviewCard) : null;
+        if (linked) return { prepared: false, error: linked };
         // Last, the server's own rows (read above): two rows of one name that look the same cannot be told apart on a card.
         // When they can, the card says which one it is; that line is added when the card is shown, not kept here.
         if (checked && !checked.ok) return { prepared: false, error: checked.refusal };
         if (checkedPool && !checkedPool.ok) return { prepared: false, error: checkedPool.refusal };
+        if (checkedInterview && !checkedInterview.ok) return { prepared: false, error: checkedInterview.refusal };
         // Named from what this specialist just looked up, else from earlier turns.
         const find = (id: unknown, kind?: ItemKind) =>
           nameIn(results)(id, kind) ??
@@ -420,7 +521,7 @@ function specialistTools(
 }
 
 /** The tool Tuah uses to hand a task to one specialist. */
-function askTool(product: ProductToolkit, team: TeamContext, turn: TurnState): Tool {
+function askTool(product: ProductToolkit, team: TeamContext, turn: TurnState, messages: readonly ModelMessage[]): Tool {
   const canChange = Object.keys(product.write).length > 0;
   return tool({
     description:
@@ -459,7 +560,7 @@ function askTool(product: ProductToolkit, team: TeamContext, turn: TurnState): T
           model: getModel('worker', team.apiKey),
           system: subAgentSystem(product.key, canChange),
           prompt: given,
-          tools: specialistTools(product, team, results, prepared, given, turn),
+          tools: specialistTools(product, team, results, prepared, given, turn, messages),
           // A CV this specialist reads reaches its own model as a user file in the next step:
           // only a run whose messages hold the read is given the file, so never Tuah, never another delegation.
           prepareStep: prepareCvStep(product.cvShelf),
@@ -506,7 +607,7 @@ function askTool(product: ProductToolkit, team: TeamContext, turn: TurnState): T
 const AREA: Record<ProductToolkit['key'], string> = {
   reach: 'marketing (ads, campaigns, creatives, leads, lead forms, appointments, ad settings)',
   crm: 'the CRM (contacts, deals, pipelines and their stages)',
-  hire: 'hiring (jobs, candidates, applications, the hiring funnel, interviews, the talent pool; it can read one candidate\'s uploaded CV and give a verdict on it; it can prepare moving, rejecting, reopening or rating one application at a time; it can prepare adding or editing one candidate at a time; it can prepare deleting one application or one candidate at a time; it can prepare a talent pool change for one candidate at a time)',
+  hire: 'hiring (jobs, candidates, applications, the hiring funnel, interviews, the talent pool; it can read one candidate\'s uploaded CV and give a verdict on it; it can prepare moving, rejecting, reopening or rating one application at a time; it can prepare adding or editing one candidate at a time; it can prepare scheduling, changing, cancelling or closing one interview at a time, or recording one that already took place; it can prepare deleting one application or one candidate at a time; it can prepare a talent pool change for one candidate at a time)',
   people: 'HR (existing staff, leave, time-off, claims, overtime, attendance, payroll, performance; it can prepare deciding leave, claims and overtime, correcting attendance, and editing staff and departments, one change at a time)',
   finance: 'finance (sales invoices and quotations, supplier bills, payments in and out, credit notes, refunds, customers and suppliers, items, bank and cash accounts; it can prepare drafting, posting and voiding invoices and bills, recording payments, issuing credit notes and refunds, and managing customers, suppliers and items, each with approval)',
 };
@@ -521,7 +622,22 @@ async function apply(
   team: TeamContext,
   proposalId: string,
   options: unknown,
+  /** The proposals whose record `applyGate` saw, and let through, in this request. */
+  gated: ReadonlySet<string>,
 ): Promise<unknown> {
+  // The gate decides from the records the request was given (`team.proposals`); this takes a record straight from
+  // the store. The two can disagree: the read behind `team.proposals` answers nothing when it fails, and the take a
+  // moment later can still work. A deletion, a talent pool change or an interview change would then run without its
+  // last check (the row changed since the card, the person left the pool, a second one in the turn). So a record the
+  // gate did not see in this request is looked at before it is taken, and one of a limited kind is left waiting.
+  // It cannot be got round by a failed read: the only way to `claim` below is to be in `gated`, which the gate fills
+  // after its checks, or to be read here and found to be of a kind that has no gate. A record that cannot be read
+  // here either is not taken at all.
+  if (!gated.has(proposalId)) {
+    const seen = (await team.store.peek([proposalId])).get(proposalId);
+    if (!seen) return { ok: false, error: NOT_WAITING };
+    if (limitedKind(seen.action)) return { ok: false, error: CHANGE_NOT_CHECKED };
+  }
   const stored = await team.store.claim({ id: proposalId });
   if (!stored) return { ok: false, error: NOT_WAITING };
   const proposal = { product: stored.product, action: stored.action, input: stored.input };
@@ -618,8 +734,10 @@ export function createTeamTools(
   const tools: ToolSet = {};
   // Every specialist asked in this request, and applyChange, share what the turn holds.
   const turn = turnStateFrom(messages, team.proposals);
+  // The proposals `applyGate` saw the record of, and let through, in this request: what `apply` may take.
+  const gated = new Set<string>();
   for (const product of products) {
-    tools[`${ASK_PREFIX}${product.name}`] = askTool(product, team, turn);
+    tools[`${ASK_PREFIX}${product.name}`] = askTool(product, team, turn, messages);
   }
 
   const anyChanges = products.some((p) => Object.keys(p.write).length > 0);
@@ -632,14 +750,14 @@ export function createTeamTools(
     inputSchema: z.object({
       proposalId: z.string().min(1).describe('The id the specialist reported.'),
     }),
-    execute: async ({ proposalId }, options) => apply(products, team, proposalId, options),
+    execute: async ({ proposalId }, options) => apply(products, team, proposalId, options, gated),
   });
   return {
     tools,
     // Only a team that can prepare a change held to one a turn needs the gate; any other keeps the plain card.
     toolApproval: {
       [APPLY_TOOL]: products.some((p) => Object.keys(p.write).some((name) => limitedKind(name) !== null))
-        ? applyGate(products, team, turn)
+        ? applyGate(products, team, turn, gated)
         : 'user-approval',
     },
     prepareStep: ({ steps }) => {

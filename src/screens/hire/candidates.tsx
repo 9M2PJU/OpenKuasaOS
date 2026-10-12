@@ -16,10 +16,12 @@ import {
 import { can } from '@/lib/auth/permissions';
 import { getViewer } from '@/lib/auth/viewer';
 import { cn } from '@/lib/utils';
+import { klDateOf } from '@/lib/hire/interview-time';
 import { buildBoardModel, type BoardModel } from '@/lib/hire/lists';
 import { ApplicationMenu } from '@/screens/hire/application-actions';
 import { AddCandidate } from '@/screens/hire/candidate-forms';
 import { DeletionNotice } from '@/screens/hire/delete-dialog';
+import { InterviewDialogHost } from '@/screens/hire/interview-dialog';
 import { FUNNEL_COLOR, LOAD_FAILED, Muted, loadHire } from '@/screens/hire/parts';
 
 type Candidate = BoardModel['stages'][number]['candidates'][number];
@@ -104,6 +106,15 @@ function CandidateCard({ candidate, canEdit }: { candidate: Candidate; canEdit: 
   );
 }
 
+/**
+ * The server's clock for the interview form: the instant itself (the form's checks tell the time from it) and
+ * today in Kuala Lumpur for the date field. The browser's own clock and its "today" can be wrong.
+ */
+const serverClock = () => {
+  const serverNow = new Date().toISOString();
+  return { serverNow, today: klDateOf(serverNow) };
+};
+
 export default async function CandidatesScreen() {
   const [{ model }, viewer] = await Promise.all([loadHire('candidates', buildBoardModel), getViewer()]);
   // Worked out once for the screen. The actions check again on the server, so this only decides what is drawn.
@@ -133,6 +144,8 @@ export default async function CandidatesScreen() {
 
       {/* Where "Deleted …" is said: the card it was said about has gone. Only for someone who may edit. */}
       {canEdit ? <DeletionNotice className="mb-3" /> : null}
+      {/* The screen's one interview dialog, closed until a card's menu opens it. It is not the card's: a card that moves column is drawn again. */}
+      {canEdit ? <InterviewDialogHost {...serverClock()} /> : null}
       <BentoGrid className="mb-6">
         {/* KPI row: headline figures only, the tables hold no history to chart */}
         <BentoCard tone="primary" className="col-span-1 md:col-span-3">

@@ -223,10 +223,18 @@ export function createSeedHireData(now: Date = new Date()): HireData {
       candidate_name: application.candidate_name,
       job_title: application.job_title,
       scheduled_at: iso(scheduled),
+      duration_minutes: 60,
       kind: KINDS[index % 3],
+      place: null,
       interviewer_name: INTERVIEWERS[index % 4],
+      notes: null,
       status,
       created_at: iso(t - 6 * DAY),
+      // The sample rows read as never changed since they were made. The demo workspace's own rows in the database
+      // differ: a reseed stamps them with the moment it ran, so nothing may assume a demo row was never changed.
+      updated_at: iso(t - 6 * DAY),
+      application_stage: application.stage,
+      application_outcome: application.outcome,
     };
   });
 

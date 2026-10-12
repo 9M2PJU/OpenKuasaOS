@@ -11,6 +11,7 @@ import { getModel, pickModelId } from '@/lib/ai/provider';
 import type { CrmAccess } from '@/lib/ai/crm-tools';
 import { prepareCvStep } from '@/lib/ai/hire-tools';
 import { guardDeletions } from '@/lib/ai/hire-deletions';
+import { guardInterviewChanges } from '@/lib/ai/hire-interview-gate';
 import { guardPoolChanges } from '@/lib/ai/hire-pool-gate';
 import {
   REACH_WRITE_TOOL_NAMES,
@@ -49,16 +50,20 @@ export type { ApprovalBinding, FinanceAccess, HireAccess, PeopleAccess, ReachAcc
 
 /**
  * One agent's tools from its products, with every change tool bound to the record the server keeps of what it
- * proposed (see `bindApprovals`). The deletion and talent pool rules are put on first, so a change they refuse is
- * never recorded.
+ * proposed (see `bindApprovals`). The deletion, talent pool and interview rules are put on first, so a change they
+ * refuse is never recorded.
  */
 function boundToolkit(products: ProductToolkit[], messages: ModelMessage[], approvals: ApprovalBinding | undefined) {
   const kit = combineToolkits(products);
-  // The first deletion of a turn, and the first talent pool change, go to the user as a card; any other is denied
-  // before a card exists, and so is one for an id nobody looked up. Deletions first, then the pool, as before.
-  const toolApproval = guardPoolChanges(
-    guardDeletions(kit.toolApproval, products.find((p) => p.checkDeletion)?.checkDeletion),
-    products.find((p) => p.checkPoolChange)?.checkPoolChange,
+  // The first deletion of a turn, the first talent pool change and the first interview change go to the user as a
+  // card; any other of its kind is denied before a card exists, and so is one for an id nobody looked up. Deletions
+  // first, then the pool, then interviews, as before.
+  const toolApproval = guardInterviewChanges(
+    guardPoolChanges(
+      guardDeletions(kit.toolApproval, products.find((p) => p.checkDeletion)?.checkDeletion),
+      products.find((p) => p.checkPoolChange)?.checkPoolChange,
+    ),
+    products.find((p) => p.checkInterviewChange)?.checkInterviewChange,
   );
   return bindApprovals({ tools: kit.tools, toolApproval }, products, approvals ?? requestOnlyBinding(messages));
 }
@@ -135,7 +140,7 @@ export function runLekir(
   approvals?: ApprovalBinding,
 ) {
   const product = hireProduct(hire);
-  // The first deletion of a turn goes to the user as a card; any other is denied before a card exists.
+  // The gates for a deletion, a talent pool change and an interview change are put on in `boundToolkit`.
   const { tools, toolApproval } = boundToolkit([product], messages, approvals);
   return streamText({
     model: getModel('orchestrator', apiKey),
@@ -220,7 +225,7 @@ const TEAM_AREA = {
   reach:
     'marketing: ads and campaigns, spend, leads (finding, adding and editing them, and promoting a lead to a CRM contact), lead forms, creatives, appointments and ad settings',
   crm: 'the CRM: contacts, deals, pipelines and their stages, follow-ups (reminders to get back to a contact), the calendar, and looking up sales invoices and what customers owe. A lead is not a contact yet: anything about a lead goes to Jebat',
-  hire: 'hiring: job openings, candidates and their applications, the hiring funnel, interviews, the talent pool and time to hire. Job openings can be created, edited, opened, paused, closed and deleted. Applications can be moved, rejected, reopened and rated, one at a time. Candidates can be added by hand and edited, one at a time. An application or a candidate can be deleted, one at a time. A candidate can be added to the talent pool, given a pool status, removed from the pool or moved to the pipeline for a job, one at a time. Existing staff, leave and payroll are not hiring. It can read one candidate\'s uploaded CV and give a verdict on it',
+  hire: 'hiring: job openings, candidates and their applications, the hiring funnel, interviews, the talent pool and time to hire. Job openings can be created, edited, opened, paused, closed and deleted. Applications can be moved, rejected, reopened and rated, one at a time. Candidates can be added by hand and edited, one at a time. An application or a candidate can be deleted, one at a time. A candidate can be added to the talent pool, given a pool status, removed from the pool or moved to the pipeline for a job, one at a time. An interview can be scheduled, changed, cancelled, marked completed or a no-show, marked scheduled again, or recorded after it took place, one at a time. Existing staff, leave and payroll are not hiring. It can read one candidate\'s uploaded CV and give a verdict on it',
   people: 'HR: existing staff, leave, time-off, claims, overtime, attendance, payroll and performance. It looks these up (an owner or admin sees everyone; others see their own) and can prepare changes that wait for approval — deciding leave, claims and overtime, correcting attendance, and editing staff and departments, one change at a time. Hiring new people is not HR',
   finance: 'finance: sales invoices and quotations, supplier bills, payments in and out, credit notes, refunds, customers and suppliers, items, and bank and cash accounts. It looks these up and can prepare changes that wait for approval — drafting, posting and voiding invoices and bills, recording payments, issuing credit notes and refunds, and managing customers, suppliers and items',
 } as const;

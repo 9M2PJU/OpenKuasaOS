@@ -198,7 +198,8 @@ export function ApprovalCard({
         Change to approve · {changeHeading(toolName)}
       </p>
       <p className="mt-1 font-medium">{title}</p>
-      {approval.note ? <p className="mt-1 break-words text-foreground">{approval.note}</p> : null}
+      {/* The server's lines keep their line breaks: an interview's card has one line for each other interview. */}
+      {approval.note ? <p className="mt-1 whitespace-pre-line break-words text-foreground">{approval.note}</p> : null}
       <ChangeList rows={rows} />
       {detail ? (
         <p className="mt-1 flex items-center gap-1.5 text-muted-foreground">

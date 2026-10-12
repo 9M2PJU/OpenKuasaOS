@@ -12,9 +12,11 @@ import {
 } from '@/components/ui/table';
 import { can } from '@/lib/auth/permissions';
 import { getViewer } from '@/lib/auth/viewer';
+import { klDateOf } from '@/lib/hire/interview-time';
 import { buildApplicationsModel } from '@/lib/hire/lists';
 import { ApplicationRow } from '@/screens/hire/application-details';
 import { DeletionNotice } from '@/screens/hire/delete-dialog';
+import { InterviewDialogHost } from '@/screens/hire/interview-dialog';
 import { LOAD_FAILED, Muted, loadHire } from '@/screens/hire/parts';
 
 /* ---- static config ------------------------------------------------ */
@@ -38,6 +40,15 @@ const STATUS_COLOR: Record<Status, string> = {
 const BY_JOB_SERIES: Series[] = [
   { key: 'applications', label: 'Applications', color: 'var(--chart-2)' },
 ];
+
+/**
+ * The server's clock for the interview form: the instant itself (the form's checks tell the time from it) and
+ * today in Kuala Lumpur for the date field. The browser's own clock and its "today" can be wrong.
+ */
+const serverClock = () => {
+  const serverNow = new Date().toISOString();
+  return { serverNow, today: klDateOf(serverNow) };
+};
 
 export default async function ApplicationsScreen() {
   const [{ model }, viewer] = await Promise.all([
@@ -64,6 +75,8 @@ export default async function ApplicationsScreen() {
         title="Applications"
         subtitle="All incoming applications across your open roles, Saudara."
       />
+      {/* The screen's one interview dialog, closed until a panel's button opens it. Only for someone who may edit. */}
+      {canEdit ? <InterviewDialogHost {...serverClock()} /> : null}
 
       <BentoGrid>
         {/* KPI row: headline figures only, the tables hold no history to chart */}

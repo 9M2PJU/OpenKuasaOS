@@ -10,6 +10,10 @@ import {
   AMBIGUOUS_POOL_CHANGE, NOT_IN_POOL_MOVE, ONE_POOL_CHANGE, POOL_CHECK_FAILED, POOL_NAMESAKE_APPEARED, jobNotLookedUp,
   lookTheSameInPool, poolNotLookedUp,
 } from '@/lib/ai/hire-pool-gate';
+import {
+  AMBIGUOUS_INTERVIEW_CHANGE, APPLICATION_NOT_ACTIVE, INTERVIEW_CHANGED_SINCE, INTERVIEW_GONE, LINK_HIDDEN, LINK_IN_INTERVIEWER, NOTHING_WOULD_CHANGE, SAME_TIME_SENT, INTERVIEW_CHECK_FAILED, LINK_NOT_GIVEN, ONE_INTERVIEW_CHANGE, interviewNotLookedUp,
+  lookTheSameInterviews,
+} from '@/lib/ai/hire-interview-gate';
 
 /**
  * A change can be stopped in two ways: the user says no on its card, or the
@@ -131,6 +135,25 @@ describe('the line a person reads on a change the server refused', () => {
     // Written for a person already.
     [lookTheSameInPool('Zarina Lau'), lookTheSameInPool('Zarina Lau')],
     [POOL_CHECK_FAILED, POOL_CHECK_FAILED],
+    [ONE_INTERVIEW_CHANGE, 'Only one interview change is prepared at a time, and one was already prepared. Ask for this one again afterwards.'],
+    [interviewNotLookedUp(ID), 'The assistant had not looked this record up, so nothing was prepared. Ask again and it will look it up first.'],
+    [AMBIGUOUS_INTERVIEW_CHANGE, 'More than one record matches that name, so nothing was prepared. Say which one you mean, then ask again.'],
+    [LINK_NOT_GIVEN, 'That link was not one you gave since the last interview card, so nothing was prepared: give the link again in your message, or ask again without one.'],
+    [INTERVIEW_CHANGED_SINCE, 'A last check stopped this, because the interview had been changed since the card was shown. Nothing was changed. Ask for it again.'],
+    // Written for a person already.
+    [lookTheSameInterviews('Aina Rahman', 'Sales Executive'), lookTheSameInterviews('Aina Rahman', 'Sales Executive')],
+    [INTERVIEW_CHECK_FAILED, INTERVIEW_CHECK_FAILED],
+    [INTERVIEW_GONE, INTERVIEW_GONE],
+    [APPLICATION_NOT_ACTIVE, APPLICATION_NOT_ACTIVE],
+    [SAME_TIME_SENT, 'The time given was the time this interview already has, so nothing was prepared. Ask again for only what should change.'],
+    [NOTHING_WOULD_CHANGE, NOTHING_WOULD_CHANGE],
+    // Tuah's team, of a change whose record was already answered (the sentence is the proposal store's own).
+    [
+      'This change is no longer waiting for approval: it was already answered, it waited more than an hour, or it is not one that was prepared here. Nothing was saved. If the user still wants it, prepare it again.',
+      'This change is no longer waiting for approval: it was already answered, or it waited too long. Nothing was saved. Ask for it again if you still want it.',
+    ],
+    [LINK_HIDDEN, 'That link had hidden characters in it, so nothing was prepared: type the link out by hand in your message, or ask again without one.'],
+    [LINK_IN_INTERVIEWER, 'The interviewer\'s name held a link, so nothing was prepared. A link goes in the Place or link field: give it as the place and ask again, or type it there on the Interviews screen.'],
   ];
   it.each(each)('%s', (reason, line) => {
     expect(refusalForUser(reason)).toBe(line);

@@ -14,12 +14,25 @@ import { isInPool, isPoolStatus, movedMessage, poolChangedMessage, poolRefusal }
 import {
   DELETE_FAILED, SUMMARY_FAILED, deletedMessage, deletionMessage, type DeletionKind, type Removal,
 } from './deletion';
+import { icsFileName, interviewIcs, invitationText, type InviteSource } from './interview-invite';
+import { instantMs, isRealDate, klDateOf, klInstant, klTimeOf, pastProblem, timeProblem } from './interview-time';
+import {
+  INTERVIEW_INPUT_MESSAGES, INTERVIEW_KINDS, INTERVIEW_LIMITS, INTERVIEW_NOT_LOADED, INTERVIEW_NOT_READ_BACK, INTERVIEW_OUTCOMES,
+  INVITATION_NOT_MADE, cancelledMessage,
+  interviewMessage, menuFor, noInvitationMessage, outcomeMessage, recordedPastMessage, reopenedMessage, scheduledMessage, updatedMessage, withNoInvitation,
+} from './interviews';
 import {
   APPLICATION_STAGES, DEFAULT_HIRE_SETTINGS, JOB_COLUMNS, SETTINGS_COLUMNS,
-  type ApplicationOutcome, type ApplicationStage, type HireSettings, type Job, type JobStatus, type PoolStatus,
+  type ApplicationOutcome, type ApplicationStage, type HireSettings, type InterviewKind, type InterviewStatus, type Job, type JobStatus,
+  type PoolStatus,
 } from './types';
 
-export type HireWriteContext = { client: SupabaseClient; orgId: string };
+export type HireWriteContext = {
+  client: SupabaseClient;
+  orgId: string;
+  /** The workspace's name, for an interview's invitation. Left out of the text when absent. Never sent to the database. */
+  orgName?: string;
+};
 export type CapResult<T> = { ok: true; data: T } | { ok: false; error: string };
 
 export const JOB_NOT_FOUND = 'That job could not be found.';
@@ -126,13 +139,6 @@ function ruleError(
     if (closes_on < klToday(now)) return CLOSES_IN_PAST;
   }
   return null;
-}
-
-/** Whether a YYYY-MM-DD string names a day that exists: 31 February and month 13 do not. */
-function isRealDate(value: string): boolean {
-  const date = new Date(`${value}T00:00:00Z`);
-  // Some dates that do not exist roll over to a later day, others do not parse at all.
-  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
 }
 
 type Lookup = { state: 'found'; job: Job } | { state: 'missing' } | { state: 'failed'; error: string };
@@ -430,6 +436,11 @@ export type ApplicationChange = {
   confirmed: boolean;
   /** Only when the row could not be read back: says so, in words for whoever reads the result. */
   note?: string;
+  /**
+   * Only after a rejection or a withdrawal: how many scheduled interviews of this application are still ahead.
+   * Nothing is cancelled for the person, so the screen and the assistant say it. 0 when the count could not be read.
+   */
+  scheduled_interviews?: number;
 };
 
 const NOT_READ_BACK = 'Saved. The application could not be read back, so some details are not shown.';
@@ -504,18 +515,42 @@ export async function moveApplication(
   return applicationChange(ctx, 'moveApplication', 'hire_move_application', { p_application_id: id, p_stage: stage }, id, { stage, outcome: 'active' });
 }
 
+/**
+ * How many scheduled interviews of one application are still ahead. A count only: no row is read. A failed read
+ * gives 0 and is not an error: the change it follows is already saved.
+ */
+async function scheduledAhead(ctx: HireWriteContext, applicationId: string, now: Date): Promise<number> {
+  try {
+    const { count, error } = await ctx.client
+      .from('hire_interviews')
+      .select('id', { count: 'exact', head: true })
+      .eq('org_id', ctx.orgId)
+      .eq('application_id', applicationId)
+      .eq('status', 'scheduled')
+      .gt('scheduled_at', now.toISOString());
+    if (error || typeof count !== 'number' || !Number.isInteger(count) || count < 0) return 0;
+    return count;
+  } catch {
+    return 0;
+  }
+}
+
 export async function closeApplication(
   ctx: HireWriteContext,
   input: z.input<typeof closeApplicationInput>,
+  now: Date = new Date(),
 ): Promise<CapResult<ApplicationChange>> {
   const parsed = closeApplicationInput.safeParse(input);
   if (!parsed.success) return invalid(parsed.error);
   const { id, outcome } = parsed.data;
   const reason = parsed.data.reason ?? null;
-  return applicationChange(
+  const result = await applicationChange(
     ctx, 'closeApplication', 'hire_close_application',
     { p_application_id: id, p_outcome: outcome, p_reason: reason }, id, { outcome, reject_reason: reason },
   );
+  if (!result.ok) return result;
+  // Rejecting cancels nothing: an interview that is still ahead stays, and whoever reads the result is told.
+  return { ok: true, data: { ...result.data, scheduled_interviews: await scheduledAhead(ctx, id, now) } };
 }
 
 export async function reopenApplication(
@@ -1015,4 +1050,576 @@ export async function moveToPipeline(
       message: movedMessage(name, job),
     },
   };
+}
+
+// ─── interviews (six database functions, called by rpc) ──────────────────────
+
+/** What a made-up interview id is answered with: where a real one comes from. See the note above NOT_A_JOB_ID. */
+export const NOT_AN_INTERVIEW_ID =
+  'That is not an interview\'s id. Look the interview up with listInterviews and use the id it returns. Never make one up.';
+
+const SAID = INTERVIEW_INPUT_MESSAGES;
+const interviewId = () => z.string().uuid(NOT_AN_INTERVIEW_ID).describe('The interview\'s id, from listInterviews.');
+/**
+ * A date and a time are plain Kuala Lumpur text, never an instant and never an offset: the capability joins them
+ * with +08:00. The shapes are patterns, which a JSON Schema can carry; whether the day exists is checked in the function.
+ */
+const dayText = () => z.string().regex(/^\d{4}-\d{2}-\d{2}$/, SAID.date);
+const clockText = () => z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, SAID.time);
+const lengthInMinutes = () =>
+  z.number().int(SAID.length).min(INTERVIEW_LIMITS.durationMin, SAID.length).max(INTERVIEW_LIMITS.durationMax, SAID.length);
+const interviewKind = () => z.enum(INTERVIEW_KINDS);
+const whatHappened = () => z.enum(INTERVIEW_OUTCOMES, SAID.outcome);
+/**
+ * No NUL character in a place, an interviewer or notes. Neither a text column nor the record the chat keeps of a
+ * proposed change (jsonb) can hold one: a change carrying it would fail to be recorded every time, behind a sentence
+ * that says to try again. Refused here with what to do, and not quietly taken out: what is saved is what was sent.
+ */
+const NO_NUL = /^[^\u0000]*$/;
+export const HAS_NUL = 'This text holds a character that cannot be saved (a NUL). Type it again without pasting.';
+/** Text that may be left out or cleared, with the form's own sentence when it is too long. A blank becomes null in the function. */
+const limitedText = (max: number, message: string) => z.string().trim().max(max, message).regex(NO_NUL, HAS_NUL).nullable().optional();
+
+const LENGTH_HELP = 'How long it lasts, in whole minutes from 15 to 480. Leave out for 60.';
+const KIND_HELP = 'How it is held: video, onsite or phone. Ask the user when it was not given: never pick one.';
+const PLACE_HELP = 'Where it is held or the meeting link, exactly as the user gave it. Leave out when none was given: never make one up.';
+const INTERVIEWER_HELP = 'Who interviews, exactly as the user gave it. Leave out when none was given.';
+const NOTES_HELP = 'Notes for the team. Never shown to the candidate.';
+
+// Every `.describe()` is the last call on its field: a description belongs to the schema it was called on.
+export const scheduleInterviewInput = z.object({
+  application_id: applicationId(),
+  date: dayText().describe('The day, as YYYY-MM-DD, in Kuala Lumpur.'),
+  time: clockText().describe('The start, as HH:MM in 24-hour form, in Kuala Lumpur time: 3 pm is 15:00.'),
+  duration_minutes: lengthInMinutes().default(60).describe(LENGTH_HELP),
+  kind: interviewKind().describe(KIND_HELP),
+  place: limitedText(INTERVIEW_LIMITS.place, SAID.place).describe(PLACE_HELP),
+  interviewer_name: limitedText(INTERVIEW_LIMITS.interviewer, SAID.interviewer).describe(INTERVIEWER_HELP),
+  notes: limitedText(INTERVIEW_LIMITS.notes, SAID.notes).describe(NOTES_HELP),
+});
+
+export const recordPastInterviewInput = z.object({
+  application_id: applicationId(),
+  date: dayText().describe('The day it took place, as YYYY-MM-DD, in Kuala Lumpur.'),
+  time: clockText().describe('When it started, as HH:MM in 24-hour form, in Kuala Lumpur time: 3 pm is 15:00.'),
+  duration_minutes: lengthInMinutes().default(60).describe(LENGTH_HELP),
+  kind: interviewKind().describe(KIND_HELP),
+  outcome: whatHappened().describe('What happened: completed when it took place, no_show when the candidate did not turn up.'),
+  place: limitedText(INTERVIEW_LIMITS.place, SAID.place).describe(PLACE_HELP),
+  interviewer_name: limitedText(INTERVIEW_LIMITS.interviewer, SAID.interviewer).describe(INTERVIEWER_HELP),
+  notes: limitedText(INTERVIEW_LIMITS.notes, SAID.notes).describe(NOTES_HELP),
+});
+
+/** Send only what changes. No field has a default: a default would be sent as a change. */
+export const rescheduleInterviewInput = z.object({
+  id: interviewId(),
+  date: dayText().optional()
+    .describe('The new day, as YYYY-MM-DD, in Kuala Lumpur. Send only what changes: leave it out to keep the time, and never send it without the time.'),
+  time: clockText().optional()
+    .describe('The new start, as HH:MM in 24-hour form, in Kuala Lumpur time: 3 pm is 15:00. Send only what changes, and never without the date.'),
+  duration_minutes: lengthInMinutes().optional().describe('The new length, in whole minutes from 15 to 480. Send only what changes.'),
+  kind: interviewKind().optional().describe('The new type: video, onsite or phone. Send only what changes.'),
+  place: limitedText(INTERVIEW_LIMITS.place, SAID.place)
+    .describe('The new place or meeting link, exactly as the user gave it: never make one up. Send only what changes. Blank clears it.'),
+  interviewer_name: limitedText(INTERVIEW_LIMITS.interviewer, SAID.interviewer)
+    .describe('Who interviews now, exactly as the user gave it. Send only what changes. Blank clears it.'),
+  notes: limitedText(INTERVIEW_LIMITS.notes, SAID.notes)
+    .describe('The new notes for the team, in place of the old ones. Never shown to the candidate. Send only what changes. Blank clears them.'),
+});
+
+export const cancelInterviewInput = z.object({ id: interviewId() });
+export const setInterviewOutcomeInput = z.object({
+  id: interviewId(),
+  outcome: whatHappened().describe('completed when the interview took place; no_show when the candidate did not turn up.'),
+});
+export const reopenInterviewInput = z.object({ id: interviewId() });
+
+/**
+ * An interview after a change. Everything but the id is null (or empty) when the change was saved but the row
+ * could not be read back and the change itself does not say. No notes: they are for the team's screens only.
+ */
+export type InterviewChange = {
+  id: string;
+  application_id: string | null;
+  candidate: string;
+  job: string;
+  application_stage: ApplicationStage | null;
+  application_outcome: ApplicationOutcome | null;
+  /** The start as an instant, as the database wrote it (or as it was sent, when not read back). */
+  scheduled_at: string | null;
+  /** The start as a Kuala Lumpur date and time, in the form the change tools take. */
+  date: string | null;
+  time: string | null;
+  duration_minutes: number | null;
+  kind: InterviewKind | null;
+  place: string | null;
+  interviewer_name: string | null;
+  status: InterviewStatus | null;
+  created_at: string | null;
+  updated_at: string | null;
+  /** The sentence for the screen's notice line and for the assistant's reply. */
+  message: string;
+  /** The text to copy to the candidate: only for an interview that reads as scheduled and has not started, and never for one recorded as already held. */
+  invitation: string | null;
+  /** True when these values were read back after the change; false when they are only what the change implies. */
+  confirmed: boolean;
+  /** Only when the row could not be read back: says so, in words for whoever reads the result. */
+  note?: string;
+};
+
+type InterviewDetails = Omit<InterviewChange, 'id' | 'message' | 'invitation' | 'confirmed' | 'note'>;
+/** What is known of an interview that could not be read back, before what the change itself implies. */
+const NOT_KNOWN: InterviewDetails = {
+  application_id: null, candidate: '', job: '', application_stage: null, application_outcome: null, scheduled_at: null, date: null, time: null,
+  duration_minutes: null, kind: null, place: null, interviewer_name: null, status: null, created_at: null, updated_at: null,
+};
+
+/** The read-back. No notes, and no contact detail: the candidate's name and the job's title are all that is joined in. */
+const INTERVIEW_READ =
+  'id,application_id,scheduled_at,duration_minutes,kind,place,interviewer_name,status,created_at,updated_at,' +
+  'application:hire_applications(stage,outcome,candidate:hire_candidates(name),job:hire_jobs(title))';
+type InterviewRead = {
+  id: string; application_id: string; scheduled_at: string; duration_minutes: number; kind: InterviewKind;
+  place: string | null; interviewer_name: string | null; status: InterviewStatus; created_at: string; updated_at: string;
+  application: {
+    stage: ApplicationStage; outcome: ApplicationOutcome; candidate: { name: string } | null; job: { title: string } | null;
+  } | null;
+};
+
+type InterviewWording = {
+  /** The success sentence, from the name and the start as read back; both are empty or null when they are not known. */
+  message: (name: string, iso: string | null) => string;
+  /** Whether an interview that reads as scheduled is given an invitation. False only for one recorded as already held. */
+  invite: boolean;
+  /** Whether the invitation says the time is new: what the database answered, never what was sent. */
+  moved: boolean;
+  /**
+   * Whether the success sentence says so when a scheduled interview is given no invitation because its start has
+   * passed: for the changes after which the screen would otherwise have offered one (a new interview, an edit, a
+   * "scheduled again"). Not for a cancellation or a mark, which never offer one.
+   */
+  explains: boolean;
+};
+
+/** Calls one interview function. An error or a throw is logged by its code only: never an id, a name, a link or a note. */
+async function callInterviewFunction(
+  ctx: HireWriteContext, fnName: string, fn: string, args: Record<string, unknown>,
+): Promise<{ ok: true; answer: unknown } | { ok: false; error: string }> {
+  try {
+    const { data, error } = await ctx.client.rpc(fn, args);
+    if (error) return changeFailed(fnName, error);
+    return { ok: true, answer: data };
+  } catch (error) {
+    return changeFailed(fnName, error);
+  }
+}
+
+/**
+ * The answer after a function said ok: the row read back with the member's own client, inside their workspace.
+ * The change is saved by then, so a read that fails or finds nothing still answers ok, with only what the change
+ * implies, a note, and no invitation. `now` is the server's clock: an interview whose start has passed at it is
+ * given no invitation.
+ */
+async function interviewChanged(
+  ctx: HireWriteContext, id: string, implied: Partial<InterviewDetails>, wording: InterviewWording, now: Date,
+): Promise<CapResult<InterviewChange>> {
+  let row: InterviewRead | null = null;
+  try {
+    const { data } = await ctx.client
+      .from('hire_interviews')
+      .select(INTERVIEW_READ)
+      .eq('id', id)
+      .eq('org_id', ctx.orgId)
+      .maybeSingle();
+    row = (data as unknown as InterviewRead | null) ?? null;
+  } catch {
+    row = null;
+  }
+  if (!row) {
+    const known: InterviewDetails = { ...NOT_KNOWN, ...implied };
+    return {
+      ok: true,
+      data: { id, ...known, message: wording.message('', known.scheduled_at), invitation: null, confirmed: false, note: INTERVIEW_NOT_READ_BACK },
+    };
+  }
+  const candidate = row.application?.candidate?.name ?? '';
+  const job = row.application?.job?.title ?? '';
+  // Only a scheduled interview has an invitation, and only when there is a name to address it to. `invitationText`
+  // itself gives none for a start that has passed, or for a row with no time to tell.
+  const invitation = wording.invite && row.status === 'scheduled' && candidate && job
+    ? invitationText({
+      id: row.id, scheduled_at: row.scheduled_at, duration_minutes: row.duration_minutes, kind: row.kind, place: row.place,
+      interviewer_name: row.interviewer_name, created_at: row.created_at, updated_at: row.updated_at,
+      candidate, job, workspace: ctx.orgName?.trim() || null,
+    }, wording.moved, now)
+    : null;
+  const said = wording.message(candidate, row.scheduled_at);
+  // Saved, scheduled, with someone to invite, and still no invitation: its start has passed (a new interview may
+  // start up to five minutes ago). The sentence says so, or the missing invitation would be a puzzle.
+  const unexplained = wording.explains && wording.invite && row.status === 'scheduled' && Boolean(candidate && job) && invitation === null
+    && instantMs(row.scheduled_at) < now.getTime();
+  return {
+    ok: true,
+    data: {
+      id: row.id,
+      application_id: row.application_id,
+      candidate,
+      job,
+      application_stage: row.application?.stage ?? null,
+      application_outcome: row.application?.outcome ?? null,
+      scheduled_at: row.scheduled_at,
+      date: klDateOf(row.scheduled_at),
+      time: klTimeOf(row.scheduled_at),
+      duration_minutes: row.duration_minutes,
+      kind: row.kind,
+      place: row.place,
+      interviewer_name: row.interviewer_name,
+      status: row.status,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+      message: unexplained ? withNoInvitation(said) : said,
+      invitation,
+      confirmed: true,
+    },
+  };
+}
+
+/**
+ * Schedules one interview for an active application. The date and the time are Kuala Lumpur text; the instant
+ * sent is that text with +08:00, so the server's own zone never touches it. A time that has passed or is too far
+ * ahead is refused here, before any call; the database applies the same limits. Nothing is sent to the candidate.
+ */
+export async function scheduleInterview(
+  ctx: HireWriteContext,
+  input: z.input<typeof scheduleInterviewInput>,
+  now: Date = new Date(),
+): Promise<CapResult<InterviewChange>> {
+  const parsed = scheduleInterviewInput.safeParse(input);
+  if (!parsed.success) return invalid(parsed.error);
+  const d = parsed.data;
+  const iso = klInstant(d.date, d.time);
+  if (!iso) return { ok: false, error: SAID.date };
+  const problem = timeProblem(iso, now);
+  if (problem) return { ok: false, error: interviewMessage(problem, 'application') };
+  const place = blankToNull(d.place) ?? null;
+  const interviewer = blankToNull(d.interviewer_name) ?? null;
+  const called = await callInterviewFunction(ctx, 'scheduleInterview', 'hire_schedule_interview', {
+    p_application_id: d.application_id,
+    p_scheduled_at: iso,
+    p_duration_minutes: d.duration_minutes,
+    p_kind: d.kind,
+    p_place: place,
+    p_interviewer_name: interviewer,
+    p_notes: blankToNull(d.notes) ?? null,
+  });
+  if (!called.ok) return called;
+  const word = wordOf(called.answer);
+  if (word !== 'ok') return { ok: false, error: interviewMessage(word, 'application') };
+  const id = (called.answer as { id?: unknown } | null)?.id;
+  if (typeof id !== 'string') return changeFailed('scheduleInterview', null);
+  return interviewChanged(
+    ctx, id,
+    {
+      application_id: d.application_id, scheduled_at: iso, date: d.date, time: d.time, duration_minutes: d.duration_minutes,
+      kind: d.kind, place, interviewer_name: interviewer, status: 'scheduled',
+    },
+    { message: (name, at) => scheduledMessage(name, at ?? iso), invite: true, moved: false, explains: true },
+    now,
+  );
+}
+
+/**
+ * Records one interview that already took place and was never scheduled here, with what happened. Its own
+ * function, not a switch on `scheduleInterview`: one refuses the past, this one refuses the future. No invitation
+ * is ever made for it.
+ */
+export async function recordPastInterview(
+  ctx: HireWriteContext,
+  input: z.input<typeof recordPastInterviewInput>,
+  now: Date = new Date(),
+): Promise<CapResult<InterviewChange>> {
+  const parsed = recordPastInterviewInput.safeParse(input);
+  if (!parsed.success) return invalid(parsed.error);
+  const d = parsed.data;
+  const iso = klInstant(d.date, d.time);
+  if (!iso) return { ok: false, error: SAID.date };
+  const problem = pastProblem(iso, now);
+  if (problem) return { ok: false, error: interviewMessage(problem, 'application') };
+  const place = blankToNull(d.place) ?? null;
+  const interviewer = blankToNull(d.interviewer_name) ?? null;
+  const called = await callInterviewFunction(ctx, 'recordPastInterview', 'hire_record_past_interview', {
+    p_application_id: d.application_id,
+    p_scheduled_at: iso,
+    p_duration_minutes: d.duration_minutes,
+    p_kind: d.kind,
+    p_outcome: d.outcome,
+    p_place: place,
+    p_interviewer_name: interviewer,
+    p_notes: blankToNull(d.notes) ?? null,
+  });
+  if (!called.ok) return called;
+  const word = wordOf(called.answer);
+  if (word !== 'ok') return { ok: false, error: interviewMessage(word, 'application') };
+  const id = (called.answer as { id?: unknown } | null)?.id;
+  if (typeof id !== 'string') return changeFailed('recordPastInterview', null);
+  return interviewChanged(
+    ctx, id,
+    {
+      application_id: d.application_id, scheduled_at: iso, date: d.date, time: d.time, duration_minutes: d.duration_minutes,
+      kind: d.kind, place, interviewer_name: interviewer, status: d.outcome,
+    },
+    { message: (name, at) => recordedPastMessage(name, at ?? iso, d.outcome), invite: false, moved: false, explains: false },
+    now,
+  );
+}
+
+/**
+ * Changes one scheduled interview: its time or any detail. Only what was sent is put in `p_changes`; a place, an
+ * interviewer or notes sent blank are cleared. A date and a time go together. `seen` is the `updated_at` the form
+ * was opened with: it is not part of the schema, so only the server action passes it, and the function then saves
+ * nothing if someone else changed the row meanwhile.
+ */
+export async function rescheduleInterview(
+  ctx: HireWriteContext,
+  input: z.input<typeof rescheduleInterviewInput>,
+  now: Date = new Date(),
+  seen?: string,
+): Promise<CapResult<InterviewChange>> {
+  const parsed = rescheduleInterviewInput.safeParse(input);
+  if (!parsed.success) return invalid(parsed.error);
+  const d = parsed.data;
+  if ((d.date === undefined) !== (d.time === undefined)) return { ok: false, error: SAID.together };
+  let iso: string | undefined;
+  if (d.date !== undefined && d.time !== undefined) {
+    const at = klInstant(d.date, d.time);
+    if (!at) return { ok: false, error: SAID.date };
+    // No past or far-future check here, unlike scheduling. Those rules apply only when the time really changes, and
+    // only the database knows the stored time: a model that sends the unchanged date and time along with new notes
+    // for an interview that began an hour ago must be saved, not refused. The database answers `in_past` and
+    // `too_far_ahead` when the time does change, and both words have their sentences.
+    iso = at;
+  }
+  const place = blankToNull(d.place);
+  const interviewer = blankToNull(d.interviewer_name);
+  // Only what was sent: undefined is left out; '' and null are sent as null (a cleared field).
+  const given: Record<string, unknown> = {
+    scheduled_at: iso,
+    duration_minutes: d.duration_minutes,
+    kind: d.kind,
+    place,
+    interviewer_name: interviewer,
+    notes: blankToNull(d.notes),
+  };
+  const changes = Object.fromEntries(Object.entries(given).filter(([, value]) => value !== undefined));
+  // An empty change would only come back as a word with no sentence of its own.
+  if (Object.keys(changes).length === 0) return { ok: false, error: interviewMessage('unchanged', 'interview') };
+  const args: Record<string, unknown> = { p_interview_id: d.id, p_changes: changes };
+  if (typeof seen === 'string' && seen) args.p_if_updated_at = seen;
+  const called = await callInterviewFunction(ctx, 'rescheduleInterview', 'hire_reschedule_interview', args);
+  if (!called.ok) return called;
+  const word = wordOf(called.answer);
+  if (word !== 'ok') return { ok: false, error: interviewMessage(word, 'interview') };
+  const implied: Partial<InterviewDetails> = { status: 'scheduled' };
+  if (iso !== undefined) Object.assign(implied, { scheduled_at: iso, date: d.date, time: d.time });
+  if (d.duration_minutes !== undefined) implied.duration_minutes = d.duration_minutes;
+  if (d.kind !== undefined) implied.kind = d.kind;
+  if (place !== undefined) implied.place = place;
+  if (interviewer !== undefined) implied.interviewer_name = interviewer;
+  // Whether the time is new is the database's to say: it compared the stored instant before and after under the
+  // row's lock. Sending a date and a time proves nothing (they are often sent along unchanged), so the input is
+  // never asked. An answer that does not say, or says it with anything but true, is not a move: the invitation
+  // then has the plainer opening, never a "new time" that is not one.
+  const moved = (called.answer as { moved?: unknown } | null)?.moved === true;
+  // `now` is not a rule on the new time (the database's, above): it only keeps an invitation from an interview that has begun.
+  return interviewChanged(ctx, d.id, implied, { message: updatedMessage, invite: true, moved, explains: true }, now);
+}
+
+/** One of the three changes that take an interview's id and nothing that needs checking first. */
+async function interviewStatusChange(
+  ctx: HireWriteContext, fnName: string, fn: string, args: Record<string, unknown>, id: string,
+  status: InterviewStatus, message: (name: string) => string, now: Date,
+): Promise<CapResult<InterviewChange>> {
+  const called = await callInterviewFunction(ctx, fnName, fn, args);
+  if (!called.ok) return called;
+  const word = wordOf(called.answer);
+  if (word !== 'ok') return { ok: false, error: interviewMessage(word, 'interview') };
+  return interviewChanged(ctx, id, { status }, { message: (name) => message(name), invite: true, moved: false, explains: status === 'scheduled' }, now);
+}
+
+/** Cancels one scheduled interview. It stays in the list as cancelled, and the candidate is not told. */
+export async function cancelInterview(
+  ctx: HireWriteContext,
+  input: z.input<typeof cancelInterviewInput>,
+  now: Date = new Date(),
+): Promise<CapResult<InterviewChange>> {
+  const parsed = cancelInterviewInput.safeParse(input);
+  if (!parsed.success) return invalid(parsed.error);
+  const { id } = parsed.data;
+  return interviewStatusChange(ctx, 'cancelInterview', 'hire_cancel_interview', { p_interview_id: id }, id, 'cancelled', cancelledMessage, now);
+}
+
+/** Marks one scheduled interview completed, or a no-show. At any time: an interview held early can be marked at once. */
+export async function setInterviewOutcome(
+  ctx: HireWriteContext,
+  input: z.input<typeof setInterviewOutcomeInput>,
+  now: Date = new Date(),
+): Promise<CapResult<InterviewChange>> {
+  const parsed = setInterviewOutcomeInput.safeParse(input);
+  if (!parsed.success) return invalid(parsed.error);
+  const { id, outcome } = parsed.data;
+  return interviewStatusChange(
+    ctx, 'setInterviewOutcome', 'hire_set_interview_outcome', { p_interview_id: id, p_outcome: outcome }, id, outcome,
+    (name) => outcomeMessage(name, outcome), now,
+  );
+}
+
+/**
+ * Marks one cancelled, completed or no-show interview as scheduled again, with its time and details as they were.
+ * `now` decides whether there is still an invitation to give: none for one whose start has passed.
+ */
+export async function reopenInterview(
+  ctx: HireWriteContext,
+  input: z.input<typeof reopenInterviewInput>,
+  now: Date = new Date(),
+): Promise<CapResult<InterviewChange>> {
+  const parsed = reopenInterviewInput.safeParse(input);
+  if (!parsed.success) return invalid(parsed.error);
+  const { id } = parsed.data;
+  return interviewStatusChange(ctx, 'reopenInterview', 'hire_reopen_interview', { p_interview_id: id }, id, 'scheduled', reopenedMessage, now);
+}
+
+// ─── what is handed to a candidate (read only) ───────────────────────────────
+
+export const interviewInvitationInput = z.object({ id: interviewId() });
+
+/** The invitation to copy and the calendar file to download, with the file's name. Never the notes. */
+export type InterviewHandover = { text: string; ics: string; fileName: string };
+/** A calendar file as it travels with a saved change. */
+export type InterviewCalendar = { ics: string; fileName: string };
+/** A saved change as a server action answers a screen: the change, and the calendar file made beside it on the server. */
+export type InterviewSaved = InterviewChange & { calendar: InterviewCalendar | null };
+
+/**
+ * The invitation and the calendar file for one interview, made from the row AS STORED at this moment and by this
+ * clock (the server's). A screen's own row can be stale (a colleague rescheduled, a page was restored by Back, a
+ * second tab), and what is made here goes to a candidate: so it is never made from what a browser holds. The input
+ * is the interview's id and nothing else; the workspace and its name are the session's. Changes nothing.
+ *
+ * Refused with a sentence when the interview is gone, is no longer scheduled, has started, or cannot be put into
+ * words. The text never says the time is new: only the answer to a reschedule knows that.
+ */
+export async function interviewInvitation(
+  ctx: HireWriteContext,
+  input: z.input<typeof interviewInvitationInput>,
+  now: Date = new Date(),
+): Promise<CapResult<InterviewHandover>> {
+  const parsed = interviewInvitationInput.safeParse(input);
+  if (!parsed.success) return invalid(parsed.error);
+  const notMade = (error: unknown): { ok: false; error: string } => {
+    // The code only: never the error, an id, a name or a link.
+    const code = (error as { code?: unknown } | null)?.code ?? (error as { name?: unknown } | null)?.name;
+    console.error('[hire-capability] interviewInvitation failed:', { code: typeof code === 'string' ? code : undefined });
+    return { ok: false, error: INVITATION_NOT_MADE };
+  };
+  let row: InterviewRead | null;
+  try {
+    // INTERVIEW_READ has no notes and no contact detail.
+    const { data, error } = await ctx.client
+      .from('hire_interviews')
+      .select(INTERVIEW_READ)
+      .eq('id', parsed.data.id)
+      .eq('org_id', ctx.orgId)
+      .maybeSingle();
+    if (error) return notMade(error);
+    row = (data as unknown as InterviewRead | null) ?? null;
+  } catch (error) {
+    return notMade(error);
+  }
+  if (!row) return { ok: false, error: interviewMessage('not_found', 'interview') };
+  if (row.status !== 'scheduled') return { ok: false, error: interviewMessage('not_scheduled', 'interview') };
+  const candidate = row.application?.candidate?.name ?? '';
+  const job = row.application?.job?.title ?? '';
+  if (!candidate.trim() || !job.trim()) return { ok: false, error: INVITATION_NOT_MADE };
+  const source: InviteSource = {
+    id: row.id, scheduled_at: row.scheduled_at, duration_minutes: row.duration_minutes, kind: row.kind, place: row.place,
+    interviewer_name: row.interviewer_name, created_at: row.created_at, updated_at: row.updated_at,
+    candidate, job, workspace: ctx.orgName?.trim() || null,
+  };
+  const start = instantMs(typeof row.scheduled_at === 'string' ? row.scheduled_at : '');
+  if (!Number.isNaN(start) && start < now.getTime()) {
+    // Only a way out the row's own menu offers is named.
+    return { ok: false, error: noInvitationMessage(menuFor(row.status, row.application?.outcome ?? 'active')) };
+  }
+  const text = invitationText(source, false, now);
+  const ics = interviewIcs(source, now);
+  const fileName = icsFileName(source);
+  if (!text || !ics || !fileName) return { ok: false, error: INVITATION_NOT_MADE };
+  return { ok: true, data: { text, ics, fileName } };
+}
+
+/** One interview as its edit form needs it: the values the form holds, with the notes, and when the row was last changed. */
+export type InterviewForEdit = {
+  id: string; scheduled_at: string; duration_minutes: number; kind: InterviewKind; place: string | null; interviewer_name: string | null;
+  notes: string | null; status: InterviewStatus; updated_at: string;
+};
+const INTERVIEW_EDIT_READ = 'id,scheduled_at,duration_minutes,kind,place,interviewer_name,notes,status,updated_at';
+
+/**
+ * One scheduled interview as it is stored now, for an edit form whose own copy was refused as stale. The notes are
+ * part of it, so only a caller who may edit is given it (the server action checks). `updated_at` goes back exactly
+ * as stored: the form sends it as `seen`, and the comparison is to the microsecond. Changes nothing.
+ */
+export async function interviewForEdit(
+  ctx: HireWriteContext,
+  input: z.input<typeof interviewInvitationInput>,
+): Promise<CapResult<InterviewForEdit>> {
+  const parsed = interviewInvitationInput.safeParse(input);
+  if (!parsed.success) return invalid(parsed.error);
+  const notLoaded = (error: unknown): { ok: false; error: string } => {
+    const code = (error as { code?: unknown } | null)?.code ?? (error as { name?: unknown } | null)?.name;
+    console.error('[hire-capability] interviewForEdit failed:', { code: typeof code === 'string' ? code : undefined });
+    return { ok: false, error: INTERVIEW_NOT_LOADED };
+  };
+  let row: InterviewForEdit | null;
+  try {
+    const { data, error } = await ctx.client
+      .from('hire_interviews')
+      .select(INTERVIEW_EDIT_READ)
+      .eq('id', parsed.data.id)
+      .eq('org_id', ctx.orgId)
+      .maybeSingle();
+    if (error) return notLoaded(error);
+    row = (data as unknown as InterviewForEdit | null) ?? null;
+  } catch (error) {
+    return notLoaded(error);
+  }
+  if (!row) return { ok: false, error: interviewMessage('not_found', 'interview') };
+  if (row.status !== 'scheduled') return { ok: false, error: interviewMessage('not_scheduled', 'interview') };
+  // Each field is named: nothing else the read returned rides along.
+  return {
+    ok: true,
+    data: {
+      id: row.id, scheduled_at: row.scheduled_at, duration_minutes: row.duration_minutes, kind: row.kind, place: row.place,
+      interviewer_name: row.interviewer_name, notes: row.notes, status: row.status, updated_at: row.updated_at,
+    },
+  };
+}
+
+/**
+ * The calendar file that goes with a change that was just saved, made here on the server from the row the change
+ * read back. Null whenever the change carries no invitation (not read back, not scheduled, started): the two are
+ * offered together or not at all. Never part of `InterviewChange` itself, which an assistant is also given.
+ */
+export function calendarOfChange(change: InterviewChange, orgName: string | null | undefined, now: Date): InterviewCalendar | null {
+  if (!change.confirmed || change.status !== 'scheduled' || !change.invitation) return null;
+  const { scheduled_at, duration_minutes, kind, created_at, updated_at } = change;
+  if (scheduled_at === null || duration_minutes === null || kind === null || created_at === null || updated_at === null) return null;
+  if (!change.candidate.trim() || !change.job.trim()) return null;
+  const source: InviteSource = {
+    id: change.id, scheduled_at, duration_minutes, kind, place: change.place, interviewer_name: change.interviewer_name,
+    created_at, updated_at, candidate: change.candidate, job: change.job, workspace: orgName?.trim() || null,
+  };
+  const ics = interviewIcs(source, now);
+  const fileName = icsFileName(source);
+  return ics && fileName ? { ics, fileName } : null;
 }

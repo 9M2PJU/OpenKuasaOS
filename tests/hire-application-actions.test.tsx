@@ -34,6 +34,14 @@ vi.mock('@/app/(app)/hire/actions', () => ({
   setPoolStatusAction: mocks.action,
   moveToPipelineAction: mocks.action,
   listPoolPickerAction: mocks.action,
+  scheduleInterviewAction: mocks.action,
+  recordPastInterviewAction: mocks.action,
+  rescheduleInterviewAction: mocks.action,
+  cancelInterviewAction: mocks.action,
+  setInterviewOutcomeAction: mocks.action,
+  reopenInterviewAction: mocks.action,
+  getInterviewInvitationAction: mocks.action,
+  getInterviewForEditAction: mocks.action,
 }));
 // No app router is mounted in a string render: the controls only need one to ask for a refresh after a refusal.
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: mocks.refresh, replace: () => {} }), usePathname: () => '/hire/talent-pool' }));
@@ -87,7 +95,8 @@ describe('the controls for one application', () => {
   it('offers, at interview: back one stage, every later stage, reject, withdraw and five ratings', () => {
     const html = controls();
     expect(buttons(html)).toEqual([
-      'Back to Screening', 'Move to Offer', 'Move to Hired', 'Mark withdrawn', 'Reject', ...STARS, 'Edit candidate', 'Add to talent pool', 'Delete application', 'Delete candidate',
+      'Back to Screening', 'Move to Offer', 'Move to Hired', 'Mark withdrawn', 'Reject', ...STARS,
+      'Schedule interview', 'Record a past interview', 'Edit candidate', 'Add to talent pool', 'Delete application', 'Delete candidate',
     ]);
     // The stage it is at, in words.
     expect(text(html)).toContain('Stage: Interview');
@@ -108,7 +117,11 @@ describe('the controls for one application', () => {
     expect(text(html)).toContain('Rejected');
     expect(text(html)).toContain('Not enough experience');
     expect(moves(html)).toEqual([]);
-    expect(buttons(html)).toEqual(['Reopen', ...STARS, 'Edit candidate', 'Add to talent pool', 'Delete application', 'Delete candidate']);
+    expect(buttons(html)).toEqual([
+      'Reopen', ...STARS, 'Record a past interview', 'Edit candidate', 'Add to talent pool', 'Delete application', 'Delete candidate',
+    ]);
+    // Planning an interview needs an active application. Recording one that already took place does not.
+    expect(buttons(html)).not.toContain('Schedule interview');
     expect(buttons(html)).not.toContain('Reject');
     expect(buttons(html)).not.toContain('Mark withdrawn');
   });
@@ -269,8 +282,8 @@ describe('the two screens', () => {
   const applications: ApplicationsModel = {
     isEmpty: false, total: 2,
     rows: [
-      { id: ID, candidateId: CANDIDATE, name: 'Aina Rahman', job: 'Barista', source: 'LinkedIn', status: 'Shortlisted', applied: '08 Oct 2026', details: null, stage: 'interview', outcome: 'active', rating: 4, rejectReason: null },
-      { id: '55555555-5555-4555-8555-555555555555', candidateId: '66666666-6666-4666-8666-666666666666', name: 'Ben Tan', job: 'Cashier', source: 'Referral', status: 'Rejected', applied: '07 Oct 2026', details: null, stage: 'applied', outcome: 'rejected', rating: null, rejectReason: 'role_filled' },
+      { id: ID, candidateId: CANDIDATE, name: 'Aina Rahman', job: 'Barista', source: 'LinkedIn', status: 'Shortlisted', applied: '08 Oct 2026', details: null, interviews: [], stage: 'interview', outcome: 'active', rating: 4, rejectReason: null },
+      { id: '55555555-5555-4555-8555-555555555555', candidateId: '66666666-6666-4666-8666-666666666666', name: 'Ben Tan', job: 'Cashier', source: 'Referral', status: 'Rejected', applied: '07 Oct 2026', details: null, interviews: [], stage: 'applied', outcome: 'rejected', rating: null, rejectReason: 'role_filled' },
     ],
     statusMix: [{ key: 'New', value: 0 }, { key: 'In review', value: 0 }, { key: 'Shortlisted', value: 1 }, { key: 'Rejected', value: 1 }],
     byJob: [],
