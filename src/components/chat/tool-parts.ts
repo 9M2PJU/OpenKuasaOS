@@ -156,10 +156,35 @@ export type ToolStep = {
   key: string;
   name: string;
   running: boolean;
-  /** The user said no to this change, so it never ran. */
+  /** The change never ran: the user said no to it, or the server refused it before asking (then `reason` says why). */
   denied: boolean;
+  /** Why the server refused the change itself. Absent when the user said no. */
+  reason?: string;
+  /** The user approved it and the server's last check then stopped it. Nothing ran. */
+  afterApproval?: true;
   output: unknown;
 };
+
+/**
+ * The line a person reads on a change the server refused before asking them. The server's reason is written for
+ * the model: it can name tools and carry a row's id. So it is not shown; a line written for a person is chosen by
+ * how the reason begins (the beginnings are fixed in lib/ai/hire-deletions.ts, and a test holds the two together).
+ * A reason that is already a sentence for a person passes as it is. One that is not known shows nothing of itself.
+ */
+const REFUSAL_LINES: [start: string, line: string | null][] = [
+  ['One deletion at a time.', 'Only one deletion is prepared at a time, and one was already prepared. Ask for this one again afterwards.'],
+  ['More than one match was found', 'More than one record matches that name, so nothing was prepared. Say which one you mean, then ask again.'],
+  ['You have not looked up ', 'The assistant had not looked this record up, so nothing was prepared. Ask again and it will look it up first.'],
+  ['Someone else with the same name appeared ', 'A last check stopped this, because someone else with the same name had appeared. Nothing was deleted. Ask for it again.'],
+  ['Two candidates called ', null],
+  ['Two applications from someone called ', null],
+  ['I could not check ', null],
+];
+export function refusalForUser(reason: string): string {
+  const known = REFUSAL_LINES.find(([start]) => reason.startsWith(start));
+  if (!known) return 'This was stopped before it was shown for approval. Nothing was changed.';
+  return known[1] ?? reason;
+}
 
 export function toToolStep(part: AnyPart, messageId: string, index: number): ToolStep | null {
   const name = toolName(part);
@@ -170,7 +195,13 @@ export function toToolStep(part: AnyPart, messageId: string, index: number): Too
   const output = 'output' in part ? part.output : undefined;
   const key =
     ('toolCallId' in part ? (part.toolCallId as string) : undefined) ?? `${messageId}-${index}`;
-  return { key, name, running, denied, output };
+  // A refusal of the server's own carries its reason; the chat's Reject button sends none.
+  const approval = denied ? (part as { approval?: { approved?: unknown; reason?: unknown } }).approval : undefined;
+  const reason = typeof approval?.reason === 'string' && approval.reason.trim() ? refusalForUser(approval.reason) : undefined;
+  // Denied although the part says approved: the server checks an approved change once more before running it, and
+  // tells the browser only that it was denied. The user's yes stays on the part; the server's reason goes to the model.
+  const afterApproval = approval?.approved === true;
+  return { key, name, running, denied, ...(reason && { reason }), ...(afterApproval && { afterApproval }), output };
 }
 
 /**
@@ -189,18 +220,26 @@ export function receiptStateFor(messages: { role: string; parts: AnyPart[] }[], 
   return pick.state === 'attached' ? { state: 'attached' } : pick;
 }
 
-export type PendingApproval = { approvalId: string; toolName: string; input: unknown };
+export type PendingApproval = {
+  approvalId: string;
+  toolName: string;
+  input: unknown;
+  /** A line the server put on the request for the person deciding (which of two same-named people this is). Never from the model. */
+  note?: string;
+};
 
 export function toPendingApproval(part: AnyPart): PendingApproval | null {
   const type = part.type;
   if (typeof type !== 'string' || !type.startsWith('tool-')) return null;
   if (!('state' in part) || (part as { state?: string }).state !== 'approval-requested') return null;
-  const approval = (part as { approval?: { id?: string } }).approval;
-  if (!approval?.id) return null;
+  const approval = (part as { approval?: { id?: string; isAutomatic?: boolean; requestReason?: unknown } }).approval;
+  // A request the server answered itself is never the user's to decide.
+  if (!approval?.id || approval.isAutomatic) return null;
   return {
     approvalId: approval.id,
     toolName: type.slice('tool-'.length),
     input: (part as { input?: unknown }).input,
+    ...(typeof approval.requestReason === 'string' && approval.requestReason.trim() && { note: approval.requestReason }),
   };
 }
 

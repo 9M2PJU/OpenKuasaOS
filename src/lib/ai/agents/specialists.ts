@@ -15,12 +15,27 @@ import {
   streamText,
   tool,
   type LanguageModel,
+  type ModelMessage,
   type Tool,
   type ToolSet,
 } from 'ai';
 import { z } from 'zod';
 import { subAgentSystem } from '@/lib/ai/agents/prompts';
 import { prepareCvStep } from '@/lib/ai/hire-tools';
+import {
+  AMBIGUOUS_DELETION,
+  HIRE_DELETE_TOOL_NAMES,
+  ambiguousLookup,
+  ONE_DELETION,
+  cardDecision,
+  cardShown,
+  deniedHere,
+  notLookedUp,
+  oneDeletionRefusal,
+  partsOf,
+  thisTurn,
+  type DeletionGate,
+} from '@/lib/ai/hire-deletions';
 import type { ProductToolkit } from '@/lib/ai/products';
 import { logModelCall, logModelError, modelErrorCode } from '@/lib/ai/call-log';
 import { getModel, pickModelId } from '@/lib/ai/provider';
@@ -81,6 +96,25 @@ const ONE_APPLICATION_CHANGE = 'One application change at a time. One is already
 const CANDIDATE_CHANGES = new Set(['addCandidate', 'updateCandidate']);
 const ONE_CANDIDATE_CHANGE = 'One candidate change at a time. One is already prepared for approval.';
 
+/** The two deletions: one a turn, across every delegation in it, and never from a lookup that said several rows match. */
+const DELETIONS = new Set<string>(HIRE_DELETE_TOOL_NAMES);
+/**
+ * What the turn in progress holds, for the two rules about a deletion. A turn is everything after the last thing
+ * the user said, and can span two requests (the one that shows a card, and the one with the user's answer). So
+ * this is read from the conversation's messages when a request starts, and added to as the request goes.
+ */
+type TurnState = {
+  /** Deletions a specialist prepared in this turn, by proposal id. */
+  prepared: Set<string>;
+  /** Deletions put in front of the user in this turn, whatever they answered: proposal id, and the call that asked. */
+  shown: Map<string, unknown>;
+  /**
+   * Every id a lookup returned while saying its name fits several rows, whichever delegation ran it. A later
+   * delegation that looks the same person up by a fuller name must not get past the question the user was owed.
+   */
+  ambiguous: Set<string>;
+};
+
 /** HR changes decide leave, pay and staff records: one person's decision per card, so only one is prepared a turn. */
 const ONE_PEOPLE_CHANGE = 'One HR change at a time. One is already prepared for approval.';
 
@@ -91,6 +125,66 @@ export function idsIn(value: unknown, depth = 0): string[] {
   if (typeof value === 'string') return UUID.test(value) ? [value] : [];
   if (!value || typeof value !== 'object' || depth > 4) return [];
   return Object.values(value).flatMap((inner) => idsIn(inner, depth + 1));
+}
+
+/** Every id that a lookup among these returned while saying its name fits several rows. */
+function ambiguousIn(results: ToolResult[]): string[] {
+  return [...new Set(results.flatMap((r) => idsIn(r.output).filter((id) => ambiguousLookup([r.output], id))))];
+}
+
+const isDeletionProposal = (proposal: Proposal | undefined): proposal is Proposal => !!proposal && DELETIONS.has(proposal.action);
+
+/**
+ * The turn's state as a request finds it. The browser sends the chat back whole, so the turn's earlier request is
+ * in these messages: what a specialist reported (its prepared changes and its ambiguous lookups), and each
+ * `applyChange` call. A call the gate itself denied was never shown to the user and is not counted.
+ */
+function turnStateFrom(messages: readonly ModelMessage[], proposals: Map<string, Proposal>): TurnState {
+  const state: TurnState = { prepared: new Set(), shown: new Map(), ambiguous: new Set() };
+  const turn = thisTurn(messages);
+  const denied = deniedHere(turn);
+  for (const message of turn) {
+    for (const part of partsOf(message)) {
+      if (message.role === 'tool' && part.type === 'tool-result' && typeof part.toolName === 'string' && part.toolName.startsWith(ASK_PREFIX)) {
+        const output = part.output as { type?: unknown; value?: unknown } | null | undefined;
+        const report = output?.type === 'json' ? output.value : null;
+        if (!isDelegation(report)) continue;
+        for (const proposal of report.proposals) if (isDeletionProposal(proposal)) state.prepared.add(proposal.id);
+        for (const id of Array.isArray(report.ambiguous) ? report.ambiguous : []) if (typeof id === 'string') state.ambiguous.add(id);
+      } else if (message.role === 'assistant' && part.type === 'tool-call' && part.toolName === APPLY_TOOL && !denied.has(part.toolCallId)) {
+        const id = (part.input as { proposalId?: unknown } | null | undefined)?.proposalId;
+        if (typeof id === 'string' && isDeletionProposal(proposals.get(id))) state.shown.set(id, part.toolCallId);
+      }
+    }
+  }
+  return state;
+}
+
+/**
+ * The approval for `applyChange`: a card for the user, except a deletion beside another deletion of the same turn,
+ * which is denied before a card exists. "Another" is one a specialist prepared in this turn or one already put to
+ * the user in it, under a different proposal; the same proposal asked for again under a new call is another too.
+ * The SDK asks again about a call the user approved, when their answer arrives: same proposal, same call, so it passes.
+ */
+function applyGate(products: ProductToolkit[], team: TeamContext, turn: TurnState): DeletionGate {
+  return async (input, { toolCallId, messages }) => {
+    const id = (input as { proposalId?: unknown } | null)?.proposalId;
+    const proposal = typeof id === 'string' ? team.proposals.get(id) : undefined;
+    if (!isDeletionProposal(proposal)) return 'user-approval';
+    const another =
+      [...turn.prepared, ...turn.shown.keys()].some((other) => other !== proposal.id) ||
+      (turn.shown.has(proposal.id) && turn.shown.get(proposal.id) !== toolCallId);
+    if (another) return { type: 'denied', reason: ONE_DELETION };
+    // Asked again here, as it was when the change was prepared: the rows may have changed since, or the proposal may be an old one.
+    // This is where the card gets its identifying line: on the approval request, which no model is sent.
+    const check = products.find((p) => p.key === proposal.product)?.checkDeletion;
+    const decision = check
+      ? cardDecision(await check(proposal.action, (proposal.input as { id?: unknown } | null)?.id), cardShown(messages, toolCallId))
+      : 'user-approval';
+    if (typeof decision === 'object' && decision.type === 'denied') return decision;
+    turn.shown.set(proposal.id, toolCallId);
+    return decision;
+  };
 }
 
 /**
@@ -104,6 +198,7 @@ function specialistTools(
   results: ToolResult[],
   prepared: Proposal[],
   given: string,
+  turn: TurnState,
 ): ToolSet {
   const tools: ToolSet = {};
 
@@ -115,6 +210,7 @@ function specialistTools(
       execute: async (input: unknown, options: unknown) => {
         const output = await run?.(input, options);
         results.push({ tool: name, output });
+        for (const id of ambiguousIn([{ tool: name, output }])) turn.ambiguous.add(id);
         return output;
       },
     } as Tool;
@@ -127,6 +223,11 @@ function specialistTools(
         'Calling this only PREPARES the change: the user is shown an Approve card and nothing is saved until they approve.',
       inputSchema: change.inputSchema as z.ZodType,
       execute: async (input: unknown) => {
+        // The one thing here that waits is read first. Calls made in one step run side by side, and everything
+        // below, down to the proposal being kept, must run without a pause for "only the first is prepared" to hold.
+        const checked = DELETIONS.has(name)
+          ? await product.checkDeletion?.(name, (input as { id?: unknown } | null)?.id)
+          : undefined;
         // A specialist stops after the step in which it prepared a change, but one step can hold
         // several calls. Each card is a decision about one person: only the first is prepared.
         if (APPLICATION_CHANGES.has(name) && prepared.length > 0) {
@@ -134,6 +235,10 @@ function specialistTools(
         }
         if (CANDIDATE_CHANGES.has(name) && prepared.length > 0) {
           return { prepared: false, error: ONE_CANDIDATE_CHANGE };
+        }
+        if (DELETIONS.has(name)) {
+          const refusal = oneDeletionRefusal(prepared.length, turn.prepared.size + turn.shown.size);
+          if (refusal) return { prepared: false, error: refusal };
         }
         if (product.key === 'people' && prepared.length > 0) {
           return { prepared: false, error: ONE_PEOPLE_CHANGE };
@@ -154,30 +259,20 @@ function specialistTools(
               'to list the item and get its real id, then prepare the change again.',
           };
         }
-        if (APPLICATION_CHANGES.has(name)) {
+        if (APPLICATION_CHANGES.has(name) || name === 'deleteApplication') {
           const id = (input as { id?: unknown } | null)?.id;
           const asApplication =
             typeof id === 'string' && (team.names?.[`application:${id}`] || nameIn(results)(id, 'application'));
           if (!asApplication) {
-            return {
-              prepared: false,
-              error:
-                `You have not looked up ${String(id)} as an application. Never guess an id: use listApplications ` +
-                'to find the application and get its real id, then prepare the change again.',
-            };
+            return { prepared: false, error: notLookedUp('application', id) };
           }
         }
-        if (name === 'updateCandidate') {
+        if (name === 'updateCandidate' || name === 'deleteCandidate') {
           const id = (input as { id?: unknown } | null)?.id;
           const asCandidate =
             typeof id === 'string' && (team.names?.[`candidate:${id}`] || nameIn(results)(id, 'candidate'));
           if (!asCandidate) {
-            return {
-              prepared: false,
-              error:
-                `You have not looked up ${String(id)} as a candidate. Never guess an id: use listCandidates ` +
-                'to find the candidate and get its real id, then prepare the change again.',
-            };
+            return { prepared: false, error: notLookedUp('candidate', id) };
           }
         }
         if (name === 'addCandidate') {
@@ -194,6 +289,17 @@ function specialistTools(
             };
           }
         }
+        // A lookup in this turn that holds the id and says several rows match: the model must ask, not choose.
+        const target = (input as { id?: unknown } | null)?.id;
+        if (
+          DELETIONS.has(name) &&
+          ((typeof target === 'string' && turn.ambiguous.has(target)) || ambiguousLookup(results.map((r) => r.output), target))
+        ) {
+          return { prepared: false, error: AMBIGUOUS_DELETION };
+        }
+        // Last, the server's own rows (read above): two rows of one name that look the same cannot be told apart on a card.
+        // When they can, the card says which one it is; that line is added when the card is shown, not kept here.
+        if (checked && !checked.ok) return { prepared: false, error: checked.refusal };
         // Named from what this specialist just looked up, else from earlier turns.
         const find = (id: unknown, kind?: ItemKind) =>
           nameIn(results)(id, kind) ??
@@ -208,6 +314,7 @@ function specialistTools(
         };
         team.proposals.set(proposal.id, proposal);
         prepared.push(proposal);
+        if (DELETIONS.has(name)) turn.prepared.add(proposal.id);
         return { prepared: true, proposalId: proposal.id, card: proposal.title };
       },
     });
@@ -216,7 +323,7 @@ function specialistTools(
 }
 
 /** The tool Tuah uses to hand a task to one specialist. */
-function askTool(product: ProductToolkit, team: TeamContext): Tool {
+function askTool(product: ProductToolkit, team: TeamContext, turn: TurnState): Tool {
   const canChange = Object.keys(product.write).length > 0;
   return tool({
     description:
@@ -242,6 +349,7 @@ function askTool(product: ProductToolkit, team: TeamContext): Tool {
             : `Prepared: ${prepared.map((p) => p.title).join(' ')}`,
         proposals: [...prepared],
         ...(status === 'working' ? {} : { names: collectNames(results) }),
+        ...(status !== 'working' && ambiguousIn(results).length > 0 && { ambiguous: ambiguousIn(results) }),
       });
 
       const given =
@@ -254,7 +362,7 @@ function askTool(product: ProductToolkit, team: TeamContext): Tool {
           model: getModel('worker', team.apiKey),
           system: subAgentSystem(product.key, canChange),
           prompt: given,
-          tools: specialistTools(product, team, results, prepared, given),
+          tools: specialistTools(product, team, results, prepared, given, turn),
           // A CV this specialist reads reaches its own model as a user file in the next step:
           // only a run whose messages hold the read is given the file, so never Tuah, never another delegation.
           prepareStep: prepareCvStep(product.cvShelf),
@@ -301,7 +409,7 @@ function askTool(product: ProductToolkit, team: TeamContext): Tool {
 const AREA: Record<ProductToolkit['key'], string> = {
   reach: 'marketing (ads, campaigns, creatives, leads, lead forms, appointments, ad settings)',
   crm: 'the CRM (contacts, deals, pipelines and their stages)',
-  hire: 'hiring (jobs, candidates, applications, the hiring funnel, interviews, the talent pool; it can read one candidate\'s uploaded CV and give a verdict on it; it can prepare moving, rejecting, reopening or rating one application at a time; it can prepare adding or editing one candidate at a time)',
+  hire: 'hiring (jobs, candidates, applications, the hiring funnel, interviews, the talent pool; it can read one candidate\'s uploaded CV and give a verdict on it; it can prepare moving, rejecting, reopening or rating one application at a time; it can prepare adding or editing one candidate at a time; it can prepare deleting one application or one candidate at a time)',
   people: 'HR (existing staff, leave, time-off, claims, overtime, attendance, payroll, performance; it can prepare deciding leave, claims and overtime, correcting attendance, and editing staff and departments, one change at a time)',
 };
 
@@ -400,15 +508,19 @@ export function changeToApply(step: StepLike | undefined): Proposal | null {
 export function createTeamTools(
   products: ProductToolkit[],
   team: TeamContext,
+  /** The conversation as this request received it: the turn in progress is read from it. */
+  messages: readonly ModelMessage[] = [],
 ): {
   tools: ToolSet;
-  toolApproval: Record<string, 'user-approval'> | undefined;
+  toolApproval: Record<string, 'user-approval' | DeletionGate> | undefined;
   /** Chooses the model for a step: the scripted one when a single change is ready to apply. */
   prepareStep?: (options: { steps: StepLike[] }) => { model: LanguageModel } | undefined;
 } {
   const tools: ToolSet = {};
+  // Every specialist asked in this request, and applyChange, share what the turn holds.
+  const turn = turnStateFrom(messages, team.proposals);
   for (const product of products) {
-    tools[`${ASK_PREFIX}${product.name}`] = askTool(product, team);
+    tools[`${ASK_PREFIX}${product.name}`] = askTool(product, team, turn);
   }
 
   const anyChanges = products.some((p) => Object.keys(p.write).length > 0);
@@ -426,7 +538,12 @@ export function createTeamTools(
   });
   return {
     tools,
-    toolApproval: { [APPLY_TOOL]: 'user-approval' },
+    // Only a team that can prepare a deletion needs the gate; any other keeps the plain card.
+    toolApproval: {
+      [APPLY_TOOL]: products.some((p) => Object.keys(p.write).some((name) => DELETIONS.has(name)))
+        ? applyGate(products, team, turn)
+        : 'user-approval',
+    },
     prepareStep: ({ steps }) => {
       const proposal = changeToApply(steps[steps.length - 1]);
       return proposal ? { model: applyStep(proposal.id) } : undefined;
