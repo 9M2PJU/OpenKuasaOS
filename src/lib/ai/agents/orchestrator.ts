@@ -18,17 +18,20 @@ import {
   combineToolkits,
   requestOnlyBinding,
   crmProduct,
+  financeProduct,
   hireProduct,
   kasturiSharedProduct,
   peopleProduct,
   reachProduct,
   type ApprovalBinding,
+  type FinanceAccess,
   type HireAccess,
   type PeopleAccess,
   type ProductToolkit,
   type ReachAccess,
 } from '@/lib/ai/products';
 import {
+  bendaharaSystem,
   JEBAT_SYSTEM,
   LEKIR_SYSTEM,
   lekiuSystem,
@@ -42,7 +45,7 @@ import type { Screen } from '@/lib/chat/screen';
 /** Tools that change data: each one pauses for the owner's approval before running. */
 export const WRITE_TOOL_NAMES = REACH_WRITE_TOOL_NAMES;
 
-export type { ApprovalBinding, HireAccess, PeopleAccess, ReachAccess };
+export type { ApprovalBinding, FinanceAccess, HireAccess, PeopleAccess, ReachAccess };
 
 /**
  * One agent's tools from its products, with every change tool bound to the record the server keeps of what it
@@ -182,6 +185,36 @@ export function runLekiu(
   });
 }
 
+/**
+ * "Bendahara, your CFO": the same single agent as Jebat, holding the finance
+ * lookups and, for someone who may write, the full invoice/quotation/bill/
+ * payment lifecycle behind the owner's approval.
+ */
+export function runBendahara(
+  messages: ModelMessage[],
+  finance: FinanceAccess,
+  abortSignal?: AbortSignal,
+  /** A workspace's own OpenRouter key; omitted for platform-paid turns. */
+  apiKey?: string,
+  /** Where proposed changes are kept; a chat route passes its own. */
+  approvals?: ApprovalBinding,
+) {
+  const { tools, toolApproval } = boundToolkit([financeProduct(finance)], messages, approvals);
+  return streamText({
+    model: getModel('orchestrator', apiKey),
+    system: bendaharaSystem(new Date()),
+    messages,
+    tools,
+    toolApproval,
+    onLanguageModelCallEnd: logModelCall('bendahara', pickModelId('orchestrator')),
+    onError: logModelError('bendahara'),
+    // Posting an invoice often needs a lookup first (the draft), then the post.
+    stopWhen: stepCountIs(10),
+    maxOutputTokens: 1200,
+    abortSignal,
+  });
+}
+
 /** What each specialist is for, as Tuah's instructions put it. */
 const TEAM_AREA = {
   reach:
@@ -189,6 +222,7 @@ const TEAM_AREA = {
   crm: 'the CRM: contacts, deals, pipelines and their stages, follow-ups (reminders to get back to a contact), the calendar, and looking up sales invoices and what customers owe. A lead is not a contact yet: anything about a lead goes to Jebat',
   hire: 'hiring: job openings, candidates and their applications, the hiring funnel, interviews, the talent pool and time to hire. Job openings can be created, edited, opened, paused, closed and deleted. Applications can be moved, rejected, reopened and rated, one at a time. Candidates can be added by hand and edited, one at a time. An application or a candidate can be deleted, one at a time. A candidate can be added to the talent pool, given a pool status, removed from the pool or moved to the pipeline for a job, one at a time. Existing staff, leave and payroll are not hiring. It can read one candidate\'s uploaded CV and give a verdict on it',
   people: 'HR: existing staff, leave, time-off, claims, overtime, attendance, payroll and performance. It looks these up (an owner or admin sees everyone; others see their own) and can prepare changes that wait for approval — deciding leave, claims and overtime, correcting attendance, and editing staff and departments, one change at a time. Hiring new people is not HR',
+  finance: 'finance: sales invoices and quotations, supplier bills, payments in and out, credit notes, refunds, customers and suppliers, items, and bank and cash accounts. It looks these up and can prepare changes that wait for approval — drafting, posting and voiding invoices and bills, recording payments, issuing credit notes and refunds, and managing customers, suppliers and items',
 } as const;
 
 /**
