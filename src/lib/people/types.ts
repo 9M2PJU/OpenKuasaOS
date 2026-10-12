@@ -41,7 +41,8 @@ export type Employee = {
   department_name: string | null;
   designation: string | null;
   employment_type: EmploymentType;
-  is_manager: boolean;
+  /** The employee this one reports to, if any. Visible to every member. */
+  reports_to: string | null;
   join_date: string | null;
   status: EmployeeStatus;
   date_of_birth_day: number | null;
@@ -146,6 +147,30 @@ export type OvertimeRecord = {
   created_at: string;
   /** `YYYY-MM` of the payroll run that paid this, once that run is paid and the viewer can read its payslip; otherwise null. */
   paid_month: string | null;
+};
+
+/**
+ * An overtime request as a manager reads it, through `hr_team_overtime`. It has no pay fields at all (no hourly
+ * rate, no amount, no payslip, no paid month): they are absent, not zero, so a screen cannot show them. The name is
+ * not in it either: join it from the employee list.
+ */
+export type TeamOvertimeRow = {
+  id: string;
+  org_id: string;
+  employee_id: string;
+  work_date: string;
+  hours: number;
+  /** Null on a row made before the day kind was kept. */
+  day_kind: OvertimeDayKind | null;
+  /** The workspace-wide multiplier for that kind of day, not anyone's pay. Null on an old row. */
+  rate_multiplier: number | null;
+  reason: string | null;
+  status: RequestStatus;
+  requested_by: string | null;
+  decided_by: string | null;
+  decided_at: string | null;
+  decision_note: string | null;
+  created_at: string;
 };
 
 export type AttendanceDay = {
@@ -457,4 +482,9 @@ export type PeopleViewer = {
   isOwner?: boolean;
   /** The current workspace is the demo workspace. */
   isDemo: boolean;
+  /**
+   * Has at least one report they have access to. Left out, not false, for everyone else: callers compare viewers
+   * whole. Never set for an owner or admin, or in the demo.
+   */
+  managesTeam?: boolean;
 };

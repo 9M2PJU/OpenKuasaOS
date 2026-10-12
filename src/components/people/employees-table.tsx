@@ -9,6 +9,7 @@ import {
   linkEmployeeToMemberAction,
   loadEmployeePrivateAction,
   setEmployeeStatusAction,
+  setReportsToAction,
   updateEmployeeAction,
 } from '@/app/(app)/people/actions';
 import { loadLeaveEntitlementsAction, setLeaveEntitlementAction } from '@/app/(app)/people/leave-actions';
@@ -23,8 +24,14 @@ import { type GoalLike, showGoalsAction } from '@/lib/people/goals-training';
 import {
   EMPLOYMENT_LABEL,
   type EmployeeFilter,
+  type EmployeesControls,
+  directoryExtras,
   filterEmployees,
   linkableMembers,
+  type StepResult,
+  reportsToBaseline,
+  reportsToRefusal,
+  runSave,
   suggestedMember,
 } from '@/lib/people/employees';
 import type { WorkspaceMember } from '@/lib/people/members';
@@ -35,7 +42,17 @@ import { EmployeeDocuments } from './employee-documents';
 import { EmployeeGoals } from './employee-goals';
 import type { EntitlementChange } from './entitlements-fields';
 
-type ActionResult = { ok: boolean; error?: string };
+type ActionResult = {
+  ok: boolean;
+  error?: string;
+  /** Shown after the form has closed: the employee was added, but the reporting line was refused. */
+  notice?: string;
+  /** The reporting line was refused on an edit; the form's control goes back to the saved value. */
+  lineRefused?: boolean;
+  /** The reporting line was saved though a later step failed: the manager now in the database (null for nobody). */
+  baseline?: string | null;
+};
+type ReportsToChange = { changed: boolean; managerId: string | null };
 
 const NOT_LINKED = 'none';
 
@@ -61,6 +78,8 @@ export function EmployeesTable({
   documents = null,
   orgId = null,
   canEdit,
+  controls,
+  viewerEmployeeId = null,
 }: {
   employees: Employee[];
   departments: Department[];
@@ -73,9 +92,14 @@ export function EmployeesTable({
   /** The workspace id, to build a file's path. */
   orgId?: string | null;
   canEdit: boolean;
+  /** What this viewer is offered beyond the list: the "Reports to" field and the "My team" filter. */
+  controls: EmployeesControls;
+  /** The viewer's own employee record, for "My team". */
+  viewerEmployeeId?: string | null;
 }) {
   const [pending, start] = useTransition();
-  const [filter, setFilter] = useState<EmployeeFilter>({ query: '', departmentId: 'all', status: 'all' });
+  const [filter, setFilter] = useState<EmployeeFilter>({ query: '', departmentId: 'all', status: 'all', team: 'all' });
+  const [reportsToResets, setReportsToResets] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<EditingEmployee | null>(null);
@@ -84,14 +108,22 @@ export function EmployeesTable({
   const [documentsFor, setDocumentsFor] = useState<Employee | null>(null);
   const showDocuments = showsEmployeeDocumentsAction(canEdit, documents, orgId);
 
-  const shown = useMemo(() => filterEmployees(employees, filter), [employees, filter]);
+  const shown = useMemo(() => filterEmployees(employees, filter, viewerEmployeeId), [employees, filter, viewerEmployeeId]);
+  const extras = useMemo(() => directoryExtras(employees), [employees]);
   const formOpen = canEdit && (creating || editing !== null);
-  const columns = canEdit ? 9 : 7;
+  const columns = canEdit ? 10 : 8;
 
   function act(result: Promise<ActionResult>) {
     start(async () => {
       const res = await result;
-      setError(res.ok ? null : (res.error ?? 'Something went wrong.'));
+      setError(res.ok ? (res.notice ?? null) : (res.error ?? 'Something went wrong.'));
+      if (res.lineRefused) setReportsToResets((count) => count + 1);
+      if (res.baseline !== undefined) {
+        const managerId = res.baseline;
+        setEditing((current) =>
+          current ? { ...current, employee: { ...current.employee, reports_to: managerId } } : current,
+        );
+      }
       if (res.ok) {
         setCreating(false);
         setEditing(null);
@@ -120,15 +152,63 @@ export function EmployeesTable({
     });
   }
 
-  /** Saves the employee, then each changed entitlement, stopping at the first refusal. */
-  async function saveEdit(id: string, input: Record<string, unknown>, changes: EntitlementChange[]): Promise<ActionResult> {
-    const saved = await updateEmployeeAction({ id, ...input });
-    if (!saved.ok) return saved;
-    for (const change of changes) {
-      const res = await setLeaveEntitlementAction({ employee_id: id, ...change });
-      if (!res.ok) return { ok: false, error: `The employee was saved, but an entitlement was not: ${res.error}` };
-    }
-    return { ok: true };
+  /** The reporting line, a separate request: only run when it changed, so a phone-number edit never takes its lock. */
+  async function lineStep(id: string, managerId: string | null): Promise<StepResult> {
+    const res = await setReportsToAction({ id, manager_id: managerId });
+    return res.ok ? { ok: true } : { ok: false, error: reportsToRefusal(res.error, id, managerId ?? '', employees) };
+  }
+
+  /** Saves in SAVE_ORDER (details, the reporting line when it changed, each changed entitlement), stopping at the first refusal. */
+  async function saveEdit(
+    id: string,
+    input: Record<string, unknown>,
+    changes: EntitlementChange[],
+    reportsTo: ReportsToChange,
+  ): Promise<ActionResult> {
+    const outcome = await runSave(reportsTo.changed, {
+      details: async () => {
+        const res = await updateEmployeeAction({ id, ...input });
+        return res.ok ? { ok: true } : { ok: false, error: res.error };
+      },
+      reports_to: () => lineStep(id, reportsTo.managerId),
+      entitlements: async () => {
+        for (const change of changes) {
+          const res = await setLeaveEntitlementAction({ employee_id: id, ...change });
+          if (!res.ok) return { ok: false, error: res.error };
+        }
+        return { ok: true };
+      },
+    });
+    if (outcome.ok) return { ok: true };
+    const lineSaved = outcome.done.includes('reports_to');
+    return {
+      ok: false,
+      error: outcome.error,
+      lineRefused: outcome.step === 'reports_to',
+      // The line is in the database now, so the form's baseline moves with it.
+      ...(lineSaved ? { baseline: reportsToBaseline(null, outcome, reportsTo.managerId) } : {}),
+    };
+  }
+
+  /** Adds the employee, then sets the reporting line. A refusal there never undoes the new employee: the form closes and the table says so. */
+  async function saveNew(input: Record<string, unknown>, reportsTo: ReportsToChange): Promise<ActionResult> {
+    let createdId = '';
+    let createError = 'Something went wrong.';
+    const outcome = await runSave(reportsTo.changed, {
+      details: async () => {
+        const created = await createEmployeeAction(input);
+        if (!created.ok) {
+          createError = created.error;
+          return { ok: false, error: created.error };
+        }
+        createdId = created.data.id;
+        return { ok: true };
+      },
+      reports_to: () => lineStep(createdId, reportsTo.managerId),
+      entitlements: async () => ({ ok: true }),
+    });
+    if (outcome.ok) return { ok: true };
+    return outcome.step === 'details' ? { ok: false, error: createError } : { ok: true, notice: outcome.error };
   }
 
   return (
@@ -174,6 +254,20 @@ export function EmployeesTable({
             <SelectItem value="inactive">Inactive</SelectItem>
           </SelectContent>
         </Select>
+        {controls.myTeamFilter ? (
+          <Select
+            value={filter.team}
+            onValueChange={(value) => setFilter((current) => ({ ...current, team: value as EmployeeFilter['team'] }))}
+          >
+            <SelectTrigger aria-label="Team" className="w-full sm:w-40">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Everyone</SelectItem>
+              <SelectItem value="mine">My team</SelectItem>
+            </SelectContent>
+          </Select>
+        ) : null}
         {canEdit ? (
           <Button
             type="button"
@@ -208,6 +302,7 @@ export function EmployeesTable({
               <TableHead>Employee no.</TableHead>
               <TableHead>Department</TableHead>
               <TableHead>Designation</TableHead>
+              <TableHead>Reports to</TableHead>
               <TableHead>Type</TableHead>
               <TableHead className="whitespace-nowrap">Join date</TableHead>
               <TableHead>Status</TableHead>
@@ -228,8 +323,10 @@ export function EmployeesTable({
                     <div className="min-w-0">
                       <p className="truncate font-medium">
                         {employee.name}
-                        {employee.is_manager ? (
-                          <span className="ml-2 text-xs font-normal text-muted-foreground">Manager</span>
+                        {extras.get(employee.id)?.manages ? (
+                          <span className="ml-2 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                            Manager
+                          </span>
                         ) : null}
                       </p>
                       <p className="truncate text-xs text-muted-foreground">{employee.work_email ?? '—'}</p>
@@ -239,6 +336,7 @@ export function EmployeesTable({
                 <TableCell className="whitespace-nowrap tabular-nums">{employee.employee_no}</TableCell>
                 <TableCell className="whitespace-nowrap">{employee.department_name ?? '—'}</TableCell>
                 <TableCell className="whitespace-nowrap">{employee.designation ?? '—'}</TableCell>
+                <TableCell className="whitespace-nowrap">{extras.get(employee.id)?.reportsTo ?? '—'}</TableCell>
                 <TableCell className="whitespace-nowrap">{EMPLOYMENT_LABEL[employee.employment_type]}</TableCell>
                 <TableCell className="whitespace-nowrap text-muted-foreground">
                   {employee.join_date ? `${formatDay(employee.join_date)} ${employee.join_date.slice(0, 4)}` : '—'}
@@ -434,6 +532,9 @@ export function EmployeesTable({
                 key={editing?.employee.id ?? 'new'}
                 initial={editing}
                 departments={departments}
+                employees={employees}
+                showReportsTo={controls.reportsToField}
+                reportsToResets={reportsToResets}
                 disabled={pending}
                 error={error}
                 onCancel={() => {
@@ -441,8 +542,8 @@ export function EmployeesTable({
                   setEditing(null);
                   setError(null);
                 }}
-                onSubmit={(input, changes) =>
-                  act(editing ? saveEdit(editing.employee.id, input, changes) : createEmployeeAction(input))
+                onSubmit={(input, changes, reportsTo) =>
+                  act(editing ? saveEdit(editing.employee.id, input, changes, reportsTo) : saveNew(input, reportsTo))
                 }
               />
             ) : null}

@@ -72,9 +72,9 @@ describe('LEKIU_SYSTEM', () => {
         !payrollTools.includes(name) &&
         !PERFORMANCE_TOOLS.includes(name),
     );
-    expect(others.every((name) => /Employee(Status|ToMember)?$|Department$/.test(name))).toBe(true);
-    expect(others).toHaveLength(8);
-    expect(PEOPLE_WRITE_TOOL_NAMES).toHaveLength(53);
+    expect(others.every((name) => /Employee(Status|ToMember)?$|Department$|^setReportsTo$/.test(name))).toBe(true);
+    expect(others).toHaveLength(9);
+    expect(PEOPLE_WRITE_TOOL_NAMES).toHaveLength(54);
     // Each leave, claim, overtime and attendance tool is named in the rules for using it.
     for (const name of [...leaveTools, ...payTools, ...attendanceTools, ...payrollTools, ...PERFORMANCE_TOOLS, ...letterWriteTools, 'previewOvertime', 'getMyAttendanceToday', 'getAttendanceSettings']) {
       expect(LEKIU_SYSTEM, name).toContain(name);
@@ -99,6 +99,8 @@ describe('LEKIU_SYSTEM', () => {
     expect(t).toContain('already approved it');
     expect(t).toContain('past tense');
     expect(t).toContain('it is never a permissions problem');
+    // With three kinds of asker a declined card must not be explained by who they are, or by a tool's name.
+    expect(t).toContain('do not mention access, owners, admins, managers or permissions, and never name a tool');
   });
   it('says what goes with a deleted employee before deleting, and offers nothing it cannot do', () => {
     expect(t).toContain('their leave, claims, draft payslips and every other hr record are deleted too');
@@ -737,5 +739,47 @@ describe('letters and documents', () => {
   it('keeps every other pinned line and is still a plain template', () => {
     expect(LEKIU_SYSTEM).not.toContain('`');
     expect(LEKIU_SYSTEM).not.toContain('${');
+  });
+});
+
+describe('LEKIU_SYSTEM, the three kinds of asker', () => {
+  it('names the three kinds and says the tools held tell which', () => {
+    expect(t).toContain('three kinds of person asking: an owner or admin, a manager');
+    expect(t).toContain('the tools you hold tell you which');
+  });
+  it('tells a member who their manager is, and where requests go when there is none', () => {
+    expect(LEKIU_SYSTEM).toContain('reports_to');
+    expect(t).toContain('their requests go to the owners and admins');
+  });
+  it('limits a manager to direct reports and names the two team reads', () => {
+    expect(t).toContain('direct reports only, never a report\'s report');
+    for (const name of ['listMyTeam', 'getWaitingForMe', 'setReportsTo']) expect(LEKIU_SYSTEM, name).toContain(name);
+  });
+  it('keeps pay, and every owner-only action, away from a manager', () => {
+    expect(t).toContain('never told what a report\'s overtime pays');
+    expect(t).toContain('those are for an owner or admin');
+    for (const word of ['marking a claim paid', 'correcting attendance', 'cancelling someone else\'s request', 'payroll']) {
+      expect(t, word).toContain(word);
+    }
+  });
+  it('has a manager\'s own request decided by someone else, and setReportsTo refuse a loop', () => {
+    expect(t).toContain('never by themselves');
+    expect(t).toContain('needs approval, and the database refuses a loop');
+    expect(t).toContain('sits with the owners and admins');
+  });
+  it('keeps the owner-only sentences and adds the manager exception after each', () => {
+    expect(t).toContain('are for owners and admins only. the one exception is a manager, who decides the leave and time-off of their direct reports; when you hold no decide tool, say the employee\'s manager or an owner or admin decides it.');
+    expect(t).toContain('are for owners and admins only. the one exception is a manager, who decides the claims and overtime of their direct reports and never marks a claim paid; when you hold no decide tool, say the employee\'s manager or an owner or admin decides it.');
+  });
+  it('does not say the overtime lookups give a manager nothing at all', () => {
+    expect(t).not.toContain('the overtime lookups give a manager none;');
+    expect(t).toContain('the overtime lookups give a manager no figure on a report\'s row');
+  });
+  it('tells that a manager gets over_balance and approved_this_year on direct reports\' pending requests', () => {
+    expect(t).toContain('a manager gets the same on their direct reports\' pending requests.');
+    expect(t).toContain('a manager gets the same on their direct reports\' pending claims.');
+  });
+  it('never mentions the old manager flag', () => {
+    expect(LEKIU_SYSTEM).not.toContain('is_manager');
   });
 });

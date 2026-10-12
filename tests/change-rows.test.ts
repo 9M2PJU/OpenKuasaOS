@@ -187,14 +187,12 @@ describe('the rows of a change', () => {
       id: UUID,
       designation: null,
       work_email: '',
-      is_manager: false,
       private: { base_salary: 4500, bank_account: '5123-4411', nric: null },
     });
     expect(rows.map((r) => [r.label, r.to])).toEqual([
       ['Employee', `id ${UUID}`],
       ['Designation', CLEARED],
       ['Work email', EMPTY],
-      ['Manager', 'No'],
       ['Private › Base salary', '4500'],
       ['Private › Bank account', '5123-4411'],
       ['Private › NRIC', CLEARED],
@@ -223,5 +221,12 @@ describe('the rows of a change', () => {
     const description = 'We are hiring. '.repeat(200);
     const [, row] = changeRows('updateJob', { id: UUID, description });
     expect(row.to).toBe(description);
+  });
+});
+
+describe('the reports-to field', () => {
+  it('is labelled for a person, not a flag', () => {
+    expect(fieldLabel('manager_id')).toBe('Reports to');
+    expect(fieldLabel('manager_id')).not.toMatch(/manager flag|is_manager/i);
   });
 });

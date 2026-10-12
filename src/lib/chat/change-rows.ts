@@ -56,9 +56,9 @@ const FIELD_LABELS: Record<string, string> = {
   careers_enabled: 'Public careers page',
   careers_headline: 'Headline',
   careers_tagline: 'Tagline',
-  is_manager: 'Manager',
   half_day: 'Half day',
   memberEmail: 'Account email',
+  manager_id: 'Reports to',
   approve: 'Decision',
   mark_completed: 'Also marks it completed',
   replace: 'Replaces existing feedback',
@@ -132,7 +132,7 @@ const ITEM_KINDS: ReadonlySet<string> = new Set<ItemKind>([
 /** The kind of row an id argument points at, from its name: `contactId` and `contact_id` → contact. */
 function kindOfKey(key: string): ItemKind | undefined {
   const stem = key.replace(/(_id|Id)$/, '').replace(/([a-z])([A-Z])/g, '$1-$2').replace(/_/g, '-').toLowerCase();
-  const alias: Record<string, ItemKind> = { line: 'payslip-line', run: 'payroll-run', 'payroll-run': 'payroll-run', course: 'training' };
+  const alias: Record<string, ItemKind> = { line: 'payslip-line', run: 'payroll-run', 'payroll-run': 'payroll-run', course: 'training', manager: 'employee' };
   if (Object.hasOwn(alias, stem)) return alias[stem];
   return ITEM_KINDS.has(stem) ? (stem as ItemKind) : undefined;
 }
