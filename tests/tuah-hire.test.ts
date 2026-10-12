@@ -3,6 +3,7 @@ import { createSeedHireData } from '@/lib/hire/seed';
 import { createSeedReachData } from '@/lib/reach/seed';
 import { HIRE_TOOL_NAMES } from '@/lib/ai/hire-tools';
 import { HIRE_WRITE_TOOL_NAMES } from '@/lib/ai/products';
+import { fullDate } from '@/lib/hire/lists';
 
 const seen = vi.hoisted(() => ({
   calls: [] as { layer: string; system: string; tools: string[]; prompt: string }[],
@@ -28,6 +29,8 @@ const candidateAdded = vi.hoisted(() => vi.fn());
 const candidateSaved = vi.hoisted(() => vi.fn());
 const applicationDeleted = vi.hoisted(() => vi.fn());
 const candidateDeleted = vi.hoisted(() => vi.fn());
+const poolSet = vi.hoisted(() => vi.fn());
+const pipelineMoved = vi.hoisted(() => vi.fn());
 
 // The real schemas, so the prepared input is checked as it is in the app; only the write is recorded.
 vi.mock('@/lib/hire/capabilities', async (importOriginal) => ({
@@ -38,6 +41,8 @@ vi.mock('@/lib/hire/capabilities', async (importOriginal) => ({
   updateCandidate: candidateSaved,
   deleteApplication: applicationDeleted,
   deleteCandidate: candidateDeleted,
+  setPoolStatus: poolSet,
+  moveToPipeline: pipelineMoved,
 }));
 
 // The real `tool`, but a refusal any tool answers with is noted: a specialist stops after the step in which
@@ -1494,5 +1499,1060 @@ describe('one deletion a turn, as the browser carries the turn between requests'
       const turn = [user('x'), report('t0', [older, newer]), user('Delete the first'), applied('c1', 'p-old'), user('Now the second')];
       expect(await gateFor(turn)({ proposalId: 'p-new' }, 'c2')).toBe('user-approval');
     });
+  });
+});
+
+describe('Tuah’s team changing the talent pool', () => {
+  const POOL_ID = '44444444-4444-4444-8444-444444444451';
+  const OTHER_ID = '44444444-4444-4444-8444-444444444452';
+  const JOB_ID = '55555555-5555-4555-8555-555555555552';
+  const MADE_UP = '99999999-9999-4999-8999-999999999999';
+  const ONE_POOL_CHANGE = 'One talent pool change at a time. One is already prepared for approval.';
+  const AMBIGUOUS =
+    'More than one match was found for that name, so no talent pool change was prepared. Stop here: say who matches and ask the user which one they mean. ' +
+    'Once the user has said who, they can ask for the change again.';
+  const NOT_IN_POOL = 'This candidate is not in the talent pool, so no move to the pipeline was prepared. Say so, and offer to add them to the talent pool first.';
+  const notACandidate = (id: string) =>
+    `You have not looked up ${id} as a candidate. Never guess an id: use listCandidates or listTalentPool ` +
+    'to find the candidate and get its real id, then prepare the change again.';
+  type Card = { type: string; isAutomatic?: boolean; reason?: string; toolCall?: { toolName?: string; input?: unknown } };
+  /**
+   * The seed's ids are not UUIDs, which the change tools require. Two candidates share a first name nobody else in
+   * the seed has: one in the pool as Passive, one outside it. The first open job gets a real id too. `second`
+   * changes the one outside the pool, for the cases about a shared name.
+   */
+  const withUuids = async (second: Record<string, unknown> = {}) => {
+    const base = hire().data;
+    const [c1, c2] = await base.listCandidates();
+    const firstOpen = (await base.listJobs()).find((j) => j.status === 'open')!;
+    const data = {
+      ...base,
+      listCandidates: async () =>
+        (await base.listCandidates()).map((c) =>
+          c.id === c1.id
+            ? { ...c, id: POOL_ID, name: 'Zarina binti Hashim', headline: 'Warehouse Supervisor', location: 'Klang', pool_status: 'passive' as const }
+            : c.id === c2.id
+              ? { ...c, id: OTHER_ID, name: 'Zarina Lau', pool_status: 'none' as const, ...second }
+              : c),
+      listJobs: async () => (await base.listJobs()).map((j) => (j.id === firstOpen.id ? { ...j, id: JOB_ID } : j)),
+    };
+    return { first: c1, job: firstOpen, access: { data, write: { ctx: { client: {} as never, orgId: 'org1' }, canWrite: true } } };
+  };
+  /** One request: what Lekir prepared, and the cards put in front of the user with the line each carried. */
+  const prepare = async (
+    script: NonNullable<typeof seen.workerScript>,
+    access: Awaited<ReturnType<typeof withUuids>>['access'],
+    names: Record<string, string> = {},
+  ) => {
+    poolSet.mockReset();
+    pipelineMoved.mockReset();
+    const context = { ...team(), names };
+    seen.calls = [];
+    seen.workerScript = script;
+    seen.workerStep = 0;
+    seen.refusals = [];
+    let cards: Card[] = [];
+    try {
+      const result = runTuah(
+        [{ role: 'user' as const, content: 'Mark the candidate Zarina binti Hashim as available in the talent pool' }],
+        reach(), undefined, undefined, null, null, context, access,
+      );
+      await result.consumeStream();
+      cards = ((await result.steps) as unknown as { content: Card[] }[])
+        .flatMap((s) => s.content)
+        .filter((p) => p.type === 'tool-approval-request' && !p.isAutomatic);
+    } finally {
+      seen.workerScript = null;
+    }
+    return { context, cards };
+  };
+  const nothingSaved = () => {
+    expect(poolSet).not.toHaveBeenCalled();
+    expect(pipelineMoved).not.toHaveBeenCalled();
+  };
+
+  it('both tools ask for approval for a writer, and a viewer holds neither', () => {
+    const writer = { ...hire(), write: { ctx: { client: {} as never, orgId: 'org1' }, canWrite: true } };
+    const { tools, toolApproval } = combineToolkits([hireProduct(writer)]);
+    for (const name of ['setPoolStatus', 'moveToPipeline']) {
+      expect(HIRE_WRITE_TOOL_NAMES, name).toContain(name);
+      expect(Object.keys(tools), name).toContain(name);
+      expect(toolApproval?.[name], name).toBe('user-approval');
+    }
+    expect(toolApproval?.listTalentPool).toBeUndefined();
+    const viewer = combineToolkits([hireProduct({ ...hire(), write: { ctx: { client: {} as never, orgId: 'org1' }, canWrite: false } })]);
+    for (const name of ['setPoolStatus', 'moveToPipeline']) expect(Object.keys(viewer.tools), name).not.toContain(name);
+  });
+  it('prepares one card for a status change of a person it looked up by full name, and saves nothing', async () => {
+    const { access } = await withUuids();
+    const { context, cards } = await prepare([
+      { tool: 'listCandidates', input: { name: 'Zarina binti Hashim' } },
+      { tool: 'setPoolStatus', input: { id: POOL_ID, status: 'available' } },
+    ], access);
+    expect(seen.refusals).toEqual([]);
+    expect(context.proposals.size).toBe(1);
+    expect([...context.proposals.values()][0]).toMatchObject({
+      product: 'hire',
+      action: 'setPoolStatus',
+      input: { id: POOL_ID, status: 'available' },
+      title: 'Mark candidate “Zarina binti Hashim” as Available in the talent pool?',
+      detail: 'Available: Open to hearing about a role now.',
+    });
+    // Nobody else has her name: the card carries no extra line.
+    expect(cards).toHaveLength(1);
+    expect(cards[0].reason).toBeUndefined();
+    nothingSaved();
+  });
+  it('accepts an id from the pool lookup, and words a removal', async () => {
+    const { access } = await withUuids();
+    const { context } = await prepare([
+      { tool: 'listTalentPool', input: { name: 'Zarina binti' } },
+      { tool: 'setPoolStatus', input: { id: POOL_ID, status: 'none' } },
+    ], access);
+    expect(seen.refusals).toEqual([]);
+    expect([...context.proposals.values()][0]).toMatchObject({
+      title: 'Remove candidate “Zarina binti Hashim” from the talent pool?',
+      detail: 'They stay on file with their details and applications.',
+    });
+  });
+  it('words an add for someone outside the pool', async () => {
+    const { access } = await withUuids();
+    const { context } = await prepare([
+      { tool: 'listCandidates', input: { name: 'Zarina Lau' } },
+      { tool: 'setPoolStatus', input: { id: OTHER_ID, status: 'available', only_if_outside: true } },
+    ], access);
+    expect(seen.refusals).toEqual([]);
+    expect([...context.proposals.values()][0]).toMatchObject({
+      title: 'Add candidate “Zarina Lau” to the talent pool as Available?',
+      detail: 'Available: Open to hearing about a role now.',
+    });
+  });
+  it('prepares a move for a pool member and a job it looked up, with the job\'s title on the card', async () => {
+    const { job, access } = await withUuids();
+    const { context } = await prepare([
+      { tool: 'listCandidates', input: { name: 'Zarina binti Hashim' } },
+      { tool: 'listJobs', input: {} },
+      { tool: 'moveToPipeline', input: { id: POOL_ID, job_id: JOB_ID } },
+    ], access);
+    expect(seen.refusals).toEqual([]);
+    expect([...context.proposals.values()][0]).toMatchObject({
+      action: 'moveToPipeline',
+      input: { id: POOL_ID, job_id: JOB_ID },
+      title: `Move candidate “Zarina binti Hashim” to the pipeline for “${job.title}”?`,
+      detail: 'Adds an application at Applied and marks them Re-engaged. They stay in the talent pool.',
+    });
+    nothingSaved();
+  });
+  it('refuses a move for someone who is not in the pool, before any card', async () => {
+    const { access } = await withUuids();
+    const { context, cards } = await prepare([
+      { tool: 'listCandidates', input: { name: 'Zarina Lau' } },
+      { tool: 'listJobs', input: {} },
+      { tool: 'moveToPipeline', input: { id: OTHER_ID, job_id: JOB_ID } },
+    ], access);
+    expect(context.proposals.size).toBe(0);
+    expect(cards).toEqual([]);
+    expect(seen.refusals[0]).toBe(NOT_IN_POOL);
+    nothingSaved();
+  });
+  it('refuses a made-up id', async () => {
+    const { access } = await withUuids();
+    const { context } = await prepare([
+      { tool: 'listCandidates', input: { name: 'Zarina binti Hashim' } },
+      { tool: 'setPoolStatus', input: { id: MADE_UP, status: 'passive' } },
+    ], access);
+    expect(context.proposals.size).toBe(0);
+    expect(seen.refusals[0]).toContain(`You have not looked up ${MADE_UP}`);
+    nothingSaved();
+  });
+  it('refuses a job\'s id as the person, even one it listed, and names both lookups', async () => {
+    const { access } = await withUuids();
+    const { context } = await prepare([
+      { tool: 'listJobs', input: {} },
+      { tool: 'setPoolStatus', input: { id: JOB_ID, status: 'passive' } },
+    ], access);
+    expect(context.proposals.size).toBe(0);
+    expect(seen.refusals[0]).toBe(notACandidate(JOB_ID));
+  });
+  it('refuses a move whose job was never looked up as a job', async () => {
+    const { access } = await withUuids();
+    const { context } = await prepare([
+      { tool: 'listCandidates', input: {} },
+      { tool: 'moveToPipeline', input: { id: POOL_ID, job_id: OTHER_ID } },
+    ], access);
+    expect(context.proposals.size).toBe(0);
+    expect(seen.refusals[0]).toBe(
+      `You have not looked up ${OTHER_ID} as a job. Never guess an id: use listJobs ` +
+        'to find the job and get its real id, then prepare the change again.',
+    );
+    nothingSaved();
+  });
+  it('makes one card when two pool changes are called in one step', async () => {
+    const { access } = await withUuids();
+    const { context } = await prepare([
+      { tool: 'listCandidates', input: {} },
+      [
+        { tool: 'setPoolStatus', input: { id: POOL_ID, status: 'available' } },
+        { tool: 'setPoolStatus', input: { id: OTHER_ID, status: 'available', only_if_outside: true } },
+      ],
+    ], access);
+    expect(context.proposals.size).toBe(1);
+    expect([...context.proposals.values()][0]).toMatchObject({ action: 'setPoolStatus', input: { id: POOL_ID } });
+    expect(seen.refusals).toEqual([ONE_POOL_CHANGE]);
+  });
+  it('refuses a pool change when another change is already prepared in the same step', async () => {
+    const { access } = await withUuids();
+    const { context } = await prepare([
+      { tool: 'listCandidates', input: {} },
+      [
+        { tool: 'updateCandidate', input: { id: POOL_ID, location: 'Klang' } },
+        { tool: 'setPoolStatus', input: { id: POOL_ID, status: 'available' } },
+      ],
+    ], access);
+    expect(context.proposals.size).toBe(1);
+    expect([...context.proposals.values()][0]).toMatchObject({ action: 'updateCandidate' });
+    expect(seen.refusals).toEqual([ONE_POOL_CHANGE]);
+  });
+  it('refuses a pool change from a lookup that said several people match, in that delegation and in a later one of the same turn', async () => {
+    const { access } = await withUuids();
+    const { context } = await prepare([
+      { tool: 'listCandidates', input: { name: 'Zarina' } },
+      { tool: 'setPoolStatus', input: { id: POOL_ID, status: 'available' } },
+      'answer',
+      // A new delegation: its own lookup fits one person, and says nothing of several.
+      { tool: 'listCandidates', input: { name: 'Zarina binti Hashim' } },
+      { tool: 'setPoolStatus', input: { id: POOL_ID, status: 'available' } },
+    ], access);
+    expect(context.proposals.size).toBe(0);
+    expect(seen.refusals.slice(0, 2)).toEqual([AMBIGUOUS, AMBIGUOUS]);
+    // The script's last call repeats in delegations that looked nothing up, until Tuah's step limit: refused as well.
+    for (const refusal of seen.refusals) expect(refusal === AMBIGUOUS || refusal.startsWith('You have not looked up')).toBe(true);
+    nothingSaved();
+  });
+  it('a shared name is not refused: the card says which person it is, on a line read from the workspace, for a status change and for a move', async () => {
+    // The other candidate now has her exact name (in another letter case), and is in the pool too.
+    const { first, access } = await withUuids({ name: ' zarina  BINTI hashim', pool_status: 'available' });
+    const line = `More than one candidate is called Zarina binti Hashim. This one: ${first.email} · added ${fullDate(first.created_at)}.`;
+    // Both ids come from an earlier turn: this delegation looks nobody up, so no lookup of its own shows the shared name.
+    const known = { [`candidate:${POOL_ID}`]: 'Zarina binti Hashim', [`job:${JOB_ID}`]: 'Software Engineer' };
+    const status = await prepare([{ tool: 'setPoolStatus', input: { id: POOL_ID, status: 'available' } }], access, known);
+    expect(seen.refusals).toEqual([]);
+    expect(status.cards).toHaveLength(1);
+    expect(status.cards[0].reason).toBe(line);
+    const moved = await prepare([{ tool: 'moveToPipeline', input: { id: POOL_ID, job_id: JOB_ID } }], access, known);
+    expect(seen.refusals).toEqual([]);
+    expect(moved.cards).toHaveLength(1);
+    expect(moved.cards[0].reason).toBe(line);
+    // The line is on the card only: no proposal, title or detail holds the email.
+    expect(JSON.stringify([...status.context.proposals.values(), ...moved.context.proposals.values()])).not.toContain(first.email!);
+    nothingSaved();
+  });
+  it('refuses only when the two of them would give the same line, and says where it can be done instead', async () => {
+    const twin = { name: 'Zarina binti Hashim', email: null, headline: 'Warehouse Supervisor', location: 'Klang', pool_status: 'available' };
+    const { first, access } = await withUuids({ ...twin });
+    const same = {
+      ...access,
+      data: {
+        ...access.data,
+        listCandidates: async () => (await access.data.listCandidates()).map((c) =>
+          c.id === POOL_ID ? { ...c, email: null } : c.id === OTHER_ID ? { ...c, created_at: first.created_at } : c),
+      },
+    };
+    const { context, cards } = await prepare(
+      [{ tool: 'setPoolStatus', input: { id: POOL_ID, status: 'available' } }],
+      same,
+      { [`candidate:${POOL_ID}`]: 'Zarina binti Hashim' },
+    );
+    expect(context.proposals.size).toBe(0);
+    expect(cards).toEqual([]);
+    expect(seen.refusals[0]).toBe(
+      'Two candidates called Zarina binti Hashim look the same from here, so I cannot tell them apart. Nothing was changed. Change the right one from the Talent Pool screen or the Candidates board.',
+    );
+  });
+  it('tells Tuah, in its roster line and in what the specialist is asked, that Lekir can change the talent pool', async () => {
+    seen.calls = [];
+    await runTuah(ask, reach(), undefined, undefined, null, null, team(), hire()).consumeStream();
+    const line = seen.calls[0].system.split('\n').find((l) => l.startsWith('- askLekir:'));
+    expect(line).toContain('An application or a candidate can be deleted, one at a time. A candidate can be added to the talent pool, given a pool status, removed from the pool or moved to the pipeline for a job, one at a time. ');
+    expect(line!.endsWith('.')).toBe(true);
+    expect(line).not.toContain('..');
+    const writer = { ...hire(), write: { ctx: { client: {} as never, orgId: 'org1' }, canWrite: true } };
+    const asks = createTeamTools([hireProduct(writer)], team()).tools.askLekir as unknown as { description: string };
+    expect(asks.description).toContain('it can prepare deleting one application or one candidate at a time; it can prepare a talent pool change for one candidate at a time)');
+  });
+});
+
+describe('one talent pool change a turn, as the browser carries the turn between requests', () => {
+  type UI = import('ai').UIMessage;
+  type Model = import('ai').ModelMessage;
+  type ToolPart = { type: string; state?: string; toolCallId?: string; input?: unknown; approval?: { id: string; approved?: boolean; reason?: string; isAutomatic?: boolean } };
+  const A = '11111111-1111-4111-8111-111111111131';
+  const B = '22222222-2222-4222-8222-222222222232';
+  const ONE_POOL_CHANGE = 'One talent pool change at a time. One is already prepared for approval.';
+  const ONE_DELETION = 'One deletion at a time. One is already prepared for approval.';
+  const marked = { ok: true, data: { id: A, name: 'Zarina binti Hashim', from: 'available', to: 'passive', message: 'Zarina binti Hashim is now marked Passive.' } };
+  const say = (id: string, text: string): UI => ({ id, role: 'user', parts: [{ type: 'text', text }] });
+  /** Two pool members with real ids and names nobody else in the seed has. */
+  const access = () => {
+    const base = hire().data;
+    const listCandidates = async () =>
+      (await base.listCandidates()).map((c, n) =>
+        n === 0 ? { ...c, id: A, name: 'Zarina binti Hashim', pool_status: 'available' as const }
+          : n === 1 ? { ...c, id: B, name: 'Kamal Ariffin', pool_status: 'available' as const } : c);
+    return { data: { ...base, listCandidates }, write: { ctx: { client: {} as never, orgId: 'org1' }, canWrite: true } };
+  };
+  type Runner = (messages: Model[], chat: UI[]) => { toUIMessageStream: () => ReadableStream<unknown> };
+  const asTeam: Runner = (messages, chat) =>
+    runTuah(messages, reach(), undefined, undefined, null, null, { transcript: '', proposals: proposalsIn(chat), names: namesIn(chat) }, access());
+  /** One request, and the chat as the browser holds it afterwards. */
+  const exchange = async (chat: UI[], run: Runner): Promise<UI[]> => {
+    const { convertToModelMessages, readUIMessageStream } = await import('ai');
+    const last = chat[chat.length - 1];
+    const paused = last.role === 'assistant' ? structuredClone(last) : undefined;
+    seen.calls = [];
+    const result = run(await convertToModelMessages(chat), chat);
+    let answer: UI | undefined;
+    for await (const message of readUIMessageStream({ message: paused, stream: result.toUIMessageStream() as never })) answer = message as UI;
+    return paused ? [...chat.slice(0, -1), answer!] : [...chat, answer!];
+  };
+  const toolParts = (chat: UI[]) => chat.flatMap((m) => m.parts as unknown as ToolPart[]).filter((p) => p.type.startsWith('tool-'));
+  const waiting = (chat: UI[]) => toolParts(chat).filter((p) => p.state === 'approval-requested' && !p.approval?.isAutomatic);
+  const decide = (chat: UI[], approved: boolean): UI[] => {
+    const next = structuredClone(chat);
+    const [card] = waiting(next);
+    card.state = 'approval-responded';
+    card.approval = { ...card.approval!, approved };
+    return next;
+  };
+
+  it.each([true, false])('team: after the card is answered (approved: %s), a second pool change in the same turn is refused; the next message allows one', async (approved) => {
+    poolSet.mockReset();
+    poolSet.mockResolvedValue(marked);
+    seen.refusals = [];
+    seen.workerStep = 0;
+    seen.workerScript = [
+      { tool: 'listCandidates', input: { name: 'Zarina binti Hashim' } },
+      { tool: 'setPoolStatus', input: { id: A, status: 'passive' } },
+      // The request that carries the answer: Tuah asks Lekir again, for the other person.
+      { tool: 'listCandidates', input: { name: 'Kamal Ariffin' } },
+      { tool: 'setPoolStatus', input: { id: B, status: 'passive' } },
+    ];
+    try {
+      const shown = await exchange([say('u1', 'Mark the candidates Zarina binti Hashim and Kamal Ariffin as passive')], asTeam);
+      expect(waiting(shown)).toHaveLength(1);
+      expect(waiting(shown)[0].type).toBe('tool-applyChange');
+      expect(poolSet).not.toHaveBeenCalled();
+
+      const after = await exchange(decide(shown, approved), asTeam);
+      expect(poolSet).toHaveBeenCalledTimes(approved ? 1 : 0);
+      if (approved) expect(poolSet.mock.calls[0][1]).toEqual({ id: A, status: 'passive' });
+      expect(waiting(after)).toEqual([]);
+      expect(seen.refusals.length).toBeGreaterThan(0);
+      for (const refusal of seen.refusals) expect(refusal).toBe(ONE_POOL_CHANGE);
+      // Nothing was prepared for the other person.
+      expect([...proposalsIn(after).values()].map((p) => p.input)).toEqual([{ id: A, status: 'passive' }]);
+
+      // The user speaks again: a new turn, with one pool change of its own.
+      seen.workerStep = 0;
+      seen.workerScript = [{ tool: 'listCandidates', input: { name: 'Kamal Ariffin' } }, { tool: 'setPoolStatus', input: { id: B, status: 'passive' } }];
+      const next = await exchange([...after, say('u2', 'Now mark the candidate Kamal Ariffin as passive')], asTeam);
+      expect(waiting(next)).toHaveLength(1);
+      const proposalId = (waiting(next)[0].input as { proposalId: string }).proposalId;
+      expect(proposalsIn(next).get(proposalId)).toMatchObject({ action: 'setPoolStatus', input: { id: B, status: 'passive' } });
+    } finally {
+      seen.workerScript = null;
+    }
+  });
+
+  // The same gate that holds a deletion to one a turn, asked about pool changes: the two kinds are counted apart.
+  describe('applyChange, asked about a pool change a specialist prepared', () => {
+    type Gate = (input: unknown, options: { toolCallId: string; messages: Model[] }) => unknown;
+    const change = (id: string, row: string) =>
+      ({ id, product: 'hire', action: 'setPoolStatus', input: { id: row, status: 'passive' }, title: 'Mark?', detail: null });
+    const older = change('p-old', A);
+    const newer = change('p-new', B);
+    const deletion = { id: 'p-del', product: 'hire', action: 'deleteCandidate', input: { id: B }, title: 'Delete?', detail: null };
+    const report = (toolCallId: string, proposals: unknown[]): Model =>
+      ({ role: 'tool', content: [{ type: 'tool-result', toolCallId, toolName: 'askLekir', output: { type: 'json', value: { agent: 'Lekir', product: 'hire', status: 'done', steps: [], answer: '', proposals } } }] }) as Model;
+    const applied = (toolCallId: string, proposalId: string): Model =>
+      ({ role: 'assistant', content: [{ type: 'tool-call', toolCallId, toolName: 'applyChange', input: { proposalId } }] }) as Model;
+    const user = (text: string): Model => ({ role: 'user', content: text });
+    const gateFor = (messages: Model[]) => {
+      const proposals = new Map([older, newer, deletion].map((p) => [p.id, p]));
+      const made = createTeamTools([hireProduct(access())], { transcript: '', proposals, names: {} }, messages);
+      return (input: unknown, toolCallId: string) => (made.toolApproval!.applyChange as Gate)(input, { toolCallId, messages });
+    };
+    const DENIED = { type: 'denied', reason: ONE_POOL_CHANGE };
+
+    it('denies an older pool change beside one prepared in this turn, in either order', async () => {
+      const turn = [user('Mark Zarina passive'), report('t0', [older]), user('And Kamal'), report('t1', [newer])];
+      expect(await gateFor(turn)({ proposalId: 'p-old' }, 'c1')).toEqual(DENIED);
+      const gate = gateFor(turn);
+      expect(await gate({ proposalId: 'p-new' }, 'c1')).toBe('user-approval');
+      expect(await gate({ proposalId: 'p-old' }, 'c2')).toEqual(DENIED);
+    });
+    it('denies a second pool change in one request when neither was prepared in this turn, and lets the same card through again', async () => {
+      const gate = gateFor([user('x'), report('t0', [older, newer]), user('Do both now')]);
+      expect(await gate({ proposalId: 'p-old' }, 'c1')).toBe('user-approval');
+      expect(await gate({ proposalId: 'p-new' }, 'c2')).toEqual(DENIED);
+      const answered = [user('x'), report('t0', [older, newer]), user('Do both now'), applied('c1', 'p-old')];
+      expect(await gateFor(answered)({ proposalId: 'p-old' }, 'c1')).toBe('user-approval');
+      expect(await gateFor(answered)({ proposalId: 'p-new' }, 'c2')).toEqual(DENIED);
+    });
+    it('counts a deletion and a pool change apart: one of each in a turn', async () => {
+      const gate = gateFor([user('x'), report('t0', [older, deletion]), user('Do both now')]);
+      expect(await gate({ proposalId: 'p-old' }, 'c1')).toBe('user-approval');
+      expect(await gate({ proposalId: 'p-del' }, 'c2')).toBe('user-approval');
+      // A second of either kind is still denied, each in its own words.
+      expect(await gate({ proposalId: 'p-new' }, 'c3')).toEqual(DENIED);
+      expect(await gate({ proposalId: 'p-del' }, 'c4')).toEqual({ type: 'denied', reason: ONE_DELETION });
+    });
+    it('starts again once the user has spoken', async () => {
+      const turn = [user('x'), report('t0', [older, newer]), user('Mark the first'), applied('c1', 'p-old'), user('Now the second')];
+      expect(await gateFor(turn)({ proposalId: 'p-new' }, 'c2')).toBe('user-approval');
+    });
+  });
+});
+
+describe('one agent holding the pool tools', () => {
+  const A = '11111111-1111-4111-8111-111111111141';
+  const B = '22222222-2222-4222-8222-222222222242';
+  const C = '33333333-3333-4333-8333-333333333343';
+  const JOB = '55555555-5555-4555-8555-555555555543';
+  const ONE_POOL_CHANGE = 'One talent pool change at a time. One is already prepared for approval.';
+  type Message = import('ai').ModelMessage;
+  type Part = { type: string; isAutomatic?: boolean; approved?: boolean; reason?: string; toolCall?: { toolName?: string; input?: unknown } };
+  /**
+   * Three candidates with real ids: A and B in the pool, C outside it. `second` changes B, for the shared-name case.
+   * The checks read these rows; what the model "looked up" is the earlier turn below.
+   */
+  const writer = (second: Record<string, unknown> = {}) => {
+    const base = hire().data;
+    const listCandidates = async () =>
+      (await base.listCandidates()).map((c, n) =>
+        n === 0 ? { ...c, id: A, name: 'Zarina binti Hashim', pool_status: 'available' as const }
+          : n === 1 ? { ...c, id: B, name: 'Kamal Ariffin', pool_status: 'passive' as const, ...second }
+            : n === 2 ? { ...c, id: C, name: 'Suraya Jamil', pool_status: 'none' as const } : c);
+    return { data: { ...base, listCandidates }, write: { ctx: { client: {} as never, orgId: 'org1' }, canWrite: true } };
+  };
+  /** An earlier turn that listed the three candidates and one job: an id may only come from a lookup the conversation holds. */
+  const listed = [
+    { role: 'user', content: 'Who is on file, and which jobs are open?' },
+    { role: 'assistant', content: [{ type: 'tool-call', toolCallId: 'l1', toolName: 'listCandidates', input: {} }, { type: 'tool-call', toolCallId: 'l2', toolName: 'listJobs', input: {} }] },
+    { role: 'tool', content: [
+      { type: 'tool-result', toolCallId: 'l1', toolName: 'listCandidates', output: { type: 'json', value: { total: 3, candidates: [{ id: A, name: 'Zarina binti Hashim', pool_status: 'available' }, { id: B, name: 'Kamal Ariffin', pool_status: 'passive' }, { id: C, name: 'Suraya Jamil', pool_status: 'none' }] } } },
+      { type: 'tool-result', toolCallId: 'l2', toolName: 'listJobs', output: { type: 'json', value: { total: 1, jobs: [{ id: JOB, name: 'Warehouse Supervisor' }] } } },
+    ] },
+    { role: 'assistant', content: 'Three people and one job.' },
+  ] as Message[];
+  const asked: Message[] = [...listed, { role: 'user', content: 'Mark both candidates as passive' }];
+  type Call = { tool: string; input: unknown };
+  /** One request: the model's first step makes every call in `script`, and any later step answers in words. */
+  const request = async (script: Call[], agent: 'tuah' | 'lekir', access = writer()) => {
+    seen.calls = [];
+    seen.singleScript = [script];
+    try {
+      const result = agent === 'lekir' ? runLekir(asked, access) : runTuah(asked, reach(), undefined, undefined, null, null, null, access);
+      await result.consumeStream();
+      const content = ((await result.steps) as unknown as { content: Part[] }[]).flatMap((s) => s.content);
+      return {
+        cards: content.filter((p) => p.type === 'tool-approval-request' && !p.isAutomatic),
+        denials: content.filter((p) => p.type === 'tool-approval-response' && p.approved === false).map((p) => p.reason),
+      };
+    } finally {
+      seen.singleScript = null;
+    }
+  };
+
+  it.each(['tuah', 'lekir'] as const)('%s: the second of two pool changes is denied with the reason, and never becomes a card', async (agent) => {
+    poolSet.mockReset();
+    const run = await request([
+      { tool: 'setPoolStatus', input: { id: A, status: 'passive' } },
+      { tool: 'setPoolStatus', input: { id: B, status: 'available' } },
+    ], agent);
+    expect(run.cards).toHaveLength(1);
+    expect(run.cards[0].toolCall).toMatchObject({ toolName: 'setPoolStatus', input: { id: A, status: 'passive' } });
+    expect(run.cards[0].reason).toBeUndefined();
+    expect(run.denials).toEqual([ONE_POOL_CHANGE]);
+    expect(poolSet).not.toHaveBeenCalled();
+  });
+  it.each(['tuah', 'lekir'] as const)('%s: no card for an id nobody looked up, for a job nobody looked up, or for a move of someone outside the pool', async (agent) => {
+    pipelineMoved.mockReset();
+    const MADE_UP = '99999999-9999-4999-8999-999999999943';
+    const madeUp = await request([{ tool: 'setPoolStatus', input: { id: MADE_UP, status: 'passive' } }], agent);
+    expect(madeUp.cards).toEqual([]);
+    expect(madeUp.denials).toEqual([
+      `You have not looked up ${MADE_UP} as a candidate. Never guess an id: use listCandidates or listTalentPool ` +
+        'to find the candidate and get its real id, then prepare the change again.',
+    ]);
+    const noJob = await request([{ tool: 'moveToPipeline', input: { id: A, job_id: B } }], agent);
+    expect(noJob.cards).toEqual([]);
+    expect(noJob.denials).toEqual([
+      `You have not looked up ${B} as a job. Never guess an id: use listJobs ` +
+        'to find the job and get its real id, then prepare the change again.',
+    ]);
+    const outside = await request([{ tool: 'moveToPipeline', input: { id: C, job_id: JOB } }], agent);
+    expect(outside.cards).toEqual([]);
+    expect(outside.denials).toEqual(['This candidate is not in the talent pool, so no move to the pipeline was prepared. Say so, and offer to add them to the talent pool first.']);
+    const fine = await request([{ tool: 'moveToPipeline', input: { id: A, job_id: JOB } }], agent);
+    expect(fine.cards).toHaveLength(1);
+    expect(pipelineMoved).not.toHaveBeenCalled();
+  });
+  it('lekir: when someone else has the name, the card carries the line that says which one, and it is not refused', async () => {
+    const access = writer({ name: 'Zarina binti Hashim' });
+    const first = (await access.data.listCandidates()).find((c) => c.id === A)!;
+    const run = await request([{ tool: 'setPoolStatus', input: { id: A, status: 'passive' } }], 'lekir', access);
+    expect(run.denials).toEqual([]);
+    expect(run.cards).toHaveLength(1);
+    expect(run.cards[0].reason).toBe(`More than one candidate is called Zarina binti Hashim. This one: ${first.email} · added ${fullDate(first.created_at)}.`);
+  });
+  it('a deletion beside a pool change keeps its own card: the two limits do not count each other', async () => {
+    const run = await request([
+      { tool: 'setPoolStatus', input: { id: A, status: 'passive' } },
+      { tool: 'deleteCandidate', input: { id: B } },
+    ], 'lekir');
+    expect(run.cards.map((c) => c.toolCall?.toolName).sort()).toEqual(['deleteCandidate', 'setPoolStatus']);
+    expect(run.denials).toEqual([]);
+  });
+});
+
+// Beyond the plan's own tests: what the deletion gate's review asked for, proven for the pool with the SDK driven
+// through the whole exchange (the request that shows the card, then the one that carries the user's answer).
+describe('one agent holding the pool tools, through the user\'s answer', () => {
+  const A = '11111111-1111-4111-8111-111111111151';
+  const B = '22222222-2222-4222-8222-222222222252';
+  const JOB = '55555555-5555-4555-8555-555555555553';
+  type Message = import('ai').ModelMessage;
+  type Part = { type: string; isAutomatic?: boolean; approved?: boolean; reason?: string; approvalId?: string; toolCall?: { toolName?: string; input?: unknown } };
+  const added = { created_at: '2026-10-03T02:00:00Z' };
+  /** A is in the pool while `pool.on`; B has A's name (in another letter case) while `twin.on`. */
+  const writer = (pool = { on: true }, twin = { on: false }) => {
+    const base = hire().data;
+    const listCandidates = async () =>
+      (await base.listCandidates()).map((c, n) =>
+        n === 0 ? { ...c, ...added, id: A, name: 'Zarina binti Hashim', email: 'zarina.klang@example.com', pool_status: pool.on ? ('available' as const) : ('none' as const) }
+          : n === 1 ? { ...c, ...added, id: B, name: twin.on ? ' zarina  BINTI hashim' : 'Kamal Ariffin', email: 'zarina.ipoh@example.com', pool_status: 'passive' as const } : c);
+    return { data: { ...base, listCandidates }, write: { ctx: { client: {} as never, orgId: 'org1' }, canWrite: true } };
+  };
+  // An earlier turn listed the person and the job, with no contact details: no model was ever shown an email.
+  const earlier = [
+    { role: 'user', content: 'Who is Zarina binti Hashim, and which jobs are open?' },
+    { role: 'assistant', content: [{ type: 'tool-call', toolCallId: 'l1', toolName: 'listTalentPool', input: { name: 'Zarina binti Hashim' } }, { type: 'tool-call', toolCallId: 'l2', toolName: 'listJobs', input: {} }] },
+    { role: 'tool', content: [
+      { type: 'tool-result', toolCallId: 'l1', toolName: 'listTalentPool', output: { type: 'json', value: { total: 1, candidates: [{ id: A, name: 'Zarina binti Hashim', pool_status: 'available' }] } } },
+      { type: 'tool-result', toolCallId: 'l2', toolName: 'listJobs', output: { type: 'json', value: { total: 1, jobs: [{ id: JOB, name: 'Warehouse Supervisor' }] } } },
+    ] },
+    { role: 'assistant', content: 'She is in the talent pool as Available. One job is open.' },
+    { role: 'user', content: 'Do it for her' },
+  ] as Message[];
+  const request = async (messages: Message[], script: { tool: string; input: unknown }[], agent: 'tuah' | 'lekir', access: ReturnType<typeof writer>) => {
+    seen.calls = [];
+    seen.singleScript = [script];
+    try {
+      const result = agent === 'lekir' ? runLekir(messages, access) : runTuah(messages, reach(), undefined, undefined, null, null, null, access);
+      await result.consumeStream();
+      const content = ((await result.steps) as unknown as { content: Part[] }[]).flatMap((s) => s.content);
+      return {
+        cards: content.filter((p) => p.type === 'tool-approval-request' && !p.isAutomatic),
+        denials: content.filter((p) => p.type === 'tool-approval-response' && p.approved === false).map((p) => p.reason),
+        messages: [...messages, ...(await result.response).messages] as Message[],
+      };
+    } finally {
+      seen.singleScript = null;
+    }
+  };
+  const answer = (approvalId: string | undefined, approved: boolean): Message =>
+    ({ role: 'tool', content: [{ type: 'tool-approval-response', approvalId, approved }] }) as Message;
+  const LINE = 'More than one candidate is called Zarina binti Hashim. This one: zarina.klang@example.com · added 03 Oct 2026.';
+  const ONE_POOL_CHANGE = 'One talent pool change at a time. One is already prepared for approval.';
+
+  it.each(['tuah', 'lekir'] as const)('%s: a shared name puts the line on the card, the approved change runs once, and no model is sent the email', async (agent) => {
+    poolSet.mockReset();
+    poolSet.mockResolvedValue({ ok: true, data: { id: A, name: 'Zarina binti Hashim', from: 'available', to: 'passive', message: 'Zarina binti Hashim is now marked Passive.' } });
+    seen.sent = [];
+    const access = writer({ on: true }, { on: true });
+    const first = await request(earlier, [{ tool: 'setPoolStatus', input: { id: A, status: 'passive' } }], agent, access);
+    expect(first.cards).toHaveLength(1);
+    expect(first.cards[0].reason).toBe(LINE);
+    expect(poolSet).not.toHaveBeenCalled();
+    // The SDK asks the gate about the approved call again: it is let through, with its line, and is that request's one.
+    const second = await request([...first.messages, answer(first.cards[0].approvalId, true)], [], agent, access);
+    expect(second.cards).toEqual([]);
+    expect(poolSet).toHaveBeenCalledTimes(1);
+    expect(poolSet.mock.calls[0][1]).toEqual({ id: A, status: 'passive' });
+    expect(seen.sent.length).toBeGreaterThan(1);
+    for (const sent of seen.sent) expect(sent).not.toContain('example.com');
+  });
+  it.each(['tuah', 'lekir'] as const)('%s: a namesake who appears after a card with no line was approved stops the change, and the model is told why', async (agent) => {
+    poolSet.mockReset();
+    const twin = { on: false };
+    const access = writer({ on: true }, twin);
+    const first = await request(earlier, [{ tool: 'setPoolStatus', input: { id: A, status: 'passive' } }], agent, access);
+    expect(first.cards).toHaveLength(1);
+    expect(first.cards[0].reason).toBeUndefined();
+    twin.on = true;
+    seen.sent = [];
+    const second = await request([...first.messages, answer(first.cards[0].approvalId, true)], [], agent, access);
+    expect(poolSet).not.toHaveBeenCalled();
+    expect(second.cards).toEqual([]);
+    expect(seen.sent[0]).toContain('A candidate with the same name appeared after this was shown for approval');
+    for (const sent of seen.sent) expect(sent).not.toContain('example.com');
+  });
+  it.each(['tuah', 'lekir'] as const)('%s: a move approved for someone who has left the pool since the card is refused again, and nothing is saved', async (agent) => {
+    pipelineMoved.mockReset();
+    const pool = { on: true };
+    const access = writer(pool);
+    const first = await request(earlier, [{ tool: 'moveToPipeline', input: { id: A, job_id: JOB } }], agent, access);
+    expect(first.cards).toHaveLength(1);
+    expect(first.cards[0].toolCall).toMatchObject({ toolName: 'moveToPipeline', input: { id: A, job_id: JOB } });
+    pool.on = false;
+    seen.sent = [];
+    const second = await request([...first.messages, answer(first.cards[0].approvalId, true)], [], agent, access);
+    expect(pipelineMoved).not.toHaveBeenCalled();
+    expect(second.cards).toEqual([]);
+    expect(seen.sent[0]).toContain('This candidate is not in the talent pool, so no move to the pipeline was prepared.');
+  });
+  it.each(['tuah', 'lekir'] as const)('%s: after a card the user rejected, a second pool change in the same turn is still refused', async (agent) => {
+    poolSet.mockReset();
+    pipelineMoved.mockReset();
+    const access = writer();
+    const first = await request(earlier, [{ tool: 'setPoolStatus', input: { id: A, status: 'passive' } }], agent, access);
+    expect(first.cards).toHaveLength(1);
+    const second = await request(
+      [...first.messages, answer(first.cards[0].approvalId, false)],
+      // Another call, under another call id: the scripted model names a call after its tool.
+      [{ tool: 'moveToPipeline', input: { id: A, job_id: JOB } }],
+      agent, access,
+    );
+    expect(second.cards).toEqual([]);
+    expect(second.denials).toEqual([ONE_POOL_CHANGE]);
+    expect(poolSet).not.toHaveBeenCalled();
+    expect(pipelineMoved).not.toHaveBeenCalled();
+  });
+  it('team: applyChange refuses a move for someone who has left the pool since it was prepared', async () => {
+    type Gate = (input: unknown, options: { toolCallId: string; messages: Message[] }) => unknown;
+    const move = { id: 'p-move', product: 'hire' as const, action: 'moveToPipeline', input: { id: A, job_id: JOB }, title: 'Move?', detail: null };
+    const messages = [{ role: 'user', content: 'Move her to the pipeline' }] as Message[];
+    const made = createTeamTools([hireProduct(writer({ on: false }))], { transcript: '', proposals: new Map([[move.id, move]]), names: {} }, messages);
+    expect(await (made.toolApproval!.applyChange as Gate)({ proposalId: 'p-move' }, { toolCallId: 'c1', messages })).toEqual({
+      type: 'denied',
+      reason: 'This candidate is not in the talent pool, so no move to the pipeline was prepared. Say so, and offer to add them to the talent pool first.',
+    });
+  });
+});
+
+// A change the user approved and a last check then stopped never ran and is over: it is not the turn's one. The
+// browser tells the server only that the call was denied, so on the NEXT request the stopped call comes back with
+// the SDK's own words and no reason of the gate's. These go through the browser's round trip for three requests:
+// the card, the yes that is stopped, and the yes to the card prepared in its place.
+describe('a change stopped after approval is not the turn\'s one, as the browser carries it', () => {
+  type UI = import('ai').UIMessage;
+  type Model = import('ai').ModelMessage;
+  type ToolPart = { type: string; state?: string; toolCallId?: string; input?: unknown; approval?: { id: string; approved?: boolean; reason?: string; requestReason?: string; isAutomatic?: boolean } };
+  const A = '11111111-1111-4111-8111-111111111161';
+  const B = '22222222-2222-4222-8222-222222222262';
+  const JOB = '55555555-5555-4555-8555-555555555563';
+  const ONE_POOL_CHANGE = 'One talent pool change at a time. One is already prepared for approval.';
+  const LINE = 'More than one candidate is called Zarina binti Hashim. This one: zarina.klang@example.com · added 03 Oct 2026.';
+  const say = (id: string, text: string): UI => ({ id, role: 'user', parts: [{ type: 'text', text }] });
+  const added = { created_at: '2026-10-03T02:00:00Z' };
+  /** A is in the pool while `pool.on`; B has A's name (in another letter case) while `twin.on`. The first open job has a real id. */
+  const world = (pool = { on: true }, twin = { on: false }) => {
+    const base = hire().data;
+    const listCandidates = async () =>
+      (await base.listCandidates()).map((c, n) =>
+        n === 0 ? { ...c, ...added, id: A, name: 'Zarina binti Hashim', email: 'zarina.klang@example.com', pool_status: pool.on ? ('available' as const) : ('none' as const) }
+          : n === 1 ? { ...c, ...added, id: B, name: twin.on ? ' zarina  BINTI hashim' : 'Kamal Ariffin', email: 'zarina.ipoh@example.com', pool_status: 'passive' as const } : c);
+    const listJobs = async () => {
+      const jobs = await base.listJobs();
+      const open = jobs.find((j) => j.status === 'open')!;
+      return jobs.map((j) => (j.id === open.id ? { ...j, id: JOB } : j));
+    };
+    return { data: { ...base, listCandidates, listJobs }, write: { ctx: { client: {} as never, orgId: 'org1' }, canWrite: true } };
+  };
+  type Access = ReturnType<typeof world>;
+  type Runner = (messages: Model[], chat: UI[]) => { toUIMessageStream: () => ReadableStream<unknown> };
+  const runners: Record<'lekir' | 'tuah' | 'team', (access: Access) => Runner> = {
+    lekir: (access) => (messages) => runLekir(messages, access),
+    tuah: (access) => (messages) => runTuah(messages, reach(), undefined, undefined, null, null, null, access),
+    team: (access) => (messages, chat) =>
+      runTuah(messages, reach(), undefined, undefined, null, null, { transcript: '', proposals: proposalsIn(chat), names: namesIn(chat) }, access),
+  };
+  type Call = { tool: string; input: unknown };
+  /**
+   * One request as the route runs it, and the chat as the browser holds it afterwards. `calls` is what the one agent's
+   * model calls, one list per step (it answers in words after the last). The team's specialist follows `seen.workerScript`.
+   */
+  const exchange = async (chat: UI[], run: Runner, calls: Call[][] | null): Promise<UI[]> => {
+    const { convertToModelMessages, readUIMessageStream } = await import('ai');
+    const last = chat[chat.length - 1];
+    const paused = last.role === 'assistant' ? structuredClone(last) : undefined;
+    seen.calls = [];
+    seen.singleScript = calls;
+    try {
+      const result = run(await convertToModelMessages(chat), chat);
+      let answer: UI | undefined;
+      for await (const message of readUIMessageStream({ message: paused, stream: result.toUIMessageStream() as never })) answer = message as UI;
+      return paused ? [...chat.slice(0, -1), answer!] : [...chat, answer!];
+    } finally {
+      seen.singleScript = null;
+    }
+  };
+  const toolParts = (chat: UI[]) => chat.flatMap((m) => m.parts as unknown as ToolPart[]).filter((p) => p.type.startsWith('tool-'));
+  const waiting = (chat: UI[]) => toolParts(chat).filter((p) => p.state === 'approval-requested' && !p.approval?.isAutomatic);
+  /** The parts the user said yes to that then did not run. */
+  const stopped = (chat: UI[]) => toolParts(chat).filter((p) => p.state === 'output-denied' && p.approval?.approved === true);
+  /** The user's answer, written on the part as the chat writes it. The chat sends no reason today; `reason` is for the day it does. */
+  const decide = (chat: UI[], approved: boolean, reason?: string): UI[] => {
+    const next = structuredClone(chat);
+    const [card] = waiting(next);
+    card.state = 'approval-responded';
+    card.approval = { ...card.approval!, approved, ...(reason !== undefined && { reason }) };
+    return next;
+  };
+  /** What a waiting card would do, whichever agent shows it: the tool and its input. */
+  const asks = (chat: UI[], card: ToolPart): { action: string; input: unknown } => {
+    if (card.type !== 'tool-applyChange') return { action: card.type.slice('tool-'.length), input: card.input };
+    const proposal = proposalsIn(chat).get((card.input as { proposalId: string }).proposalId)!;
+    return { action: proposal.action, input: proposal.input };
+  };
+  const reset = () => {
+    for (const fn of [poolSet, pipelineMoved, candidateDeleted]) fn.mockReset();
+    poolSet.mockResolvedValue({ ok: true, data: { id: A, name: 'Zarina binti Hashim', from: 'none', to: 'available', message: 'Added Zarina binti Hashim to the talent pool as Available.' } });
+    candidateDeleted.mockResolvedValue({ ok: true, data: { id: A, name: 'Zarina binti Hashim', job: null, applications: 0, interviews: 0, cv_files: 0, message: 'Deleted Zarina binti Hashim.' } });
+    seen.refusals = [];
+    seen.workerStep = 0;
+  };
+  const lookups: Call[] = [{ tool: 'listCandidates', input: { name: 'Zarina binti Hashim' } }, { tool: 'listJobs', input: {} }];
+  // A filler lookup first, so the call that follows gets a call id of its own: the scripted model names a call after its tool and its place.
+  const again = (call: Call): Call[][] => [[{ tool: 'listJobs', input: {} }, call]];
+
+  type Case = {
+    name: string;
+    first: Call;
+    /** What changes between the card and the yes. */
+    change: (pool: { on: boolean }, twin: { on: boolean }) => void;
+    second: Call;
+    /** The second card carries the line that says which one it is. */
+    line: boolean;
+    ran: () => void;
+  };
+  const cases: Case[] = [
+    {
+      name: 'a move for someone who then left the pool, then adding them to it',
+      first: { tool: 'moveToPipeline', input: { id: A, job_id: JOB } },
+      change: (pool) => { pool.on = false; },
+      second: { tool: 'setPoolStatus', input: { id: A, status: 'available', only_if_outside: true } },
+      line: false,
+      ran: () => {
+        expect(pipelineMoved).not.toHaveBeenCalled();
+        expect(poolSet).toHaveBeenCalledTimes(1);
+        expect(poolSet.mock.calls[0][1]).toEqual({ id: A, status: 'available', only_if_outside: true });
+      },
+    },
+    {
+      name: 'a pool change when a namesake then appeared, prepared again',
+      first: { tool: 'setPoolStatus', input: { id: A, status: 'passive' } },
+      change: (_pool, twin) => { twin.on = true; },
+      second: { tool: 'setPoolStatus', input: { id: A, status: 'passive' } },
+      line: true,
+      ran: () => {
+        expect(poolSet).toHaveBeenCalledTimes(1);
+        expect(poolSet.mock.calls[0][1]).toEqual({ id: A, status: 'passive' });
+      },
+    },
+    {
+      name: 'a deletion when a namesake then appeared, prepared again',
+      first: { tool: 'deleteCandidate', input: { id: A } },
+      change: (_pool, twin) => { twin.on = true; },
+      second: { tool: 'deleteCandidate', input: { id: A } },
+      line: true,
+      ran: () => {
+        expect(candidateDeleted).toHaveBeenCalledTimes(1);
+        expect(candidateDeleted.mock.calls[0][1]).toEqual({ id: A });
+      },
+    },
+  ];
+
+  it('team: a lookup that said several match still holds a pool change back in the turn\'s second request', async () => {
+    const AMBIGUOUS =
+      'More than one match was found for that name, so no talent pool change was prepared. Stop here: say who matches and ask the user which one they mean. ' +
+      'Once the user has said who, they can ask for the change again.';
+    reset();
+    candidateSaved.mockReset();
+    candidateSaved.mockResolvedValue({ ok: true, data: { id: B, name: 'Kamal Ariffin' } });
+    const run = runners.team(world());
+    seen.workerScript = [
+      // First delegation: the letters fit both people (and others), and the pool change is refused.
+      { tool: 'listCandidates', input: { name: 'ari' } },
+      { tool: 'setPoolStatus', input: { id: A, status: 'passive' } },
+      'answer',
+      // Second delegation, same request: another kind of change, which gets a card. The request ends there.
+      { tool: 'listCandidates', input: {} },
+      { tool: 'updateCandidate', input: { id: B, location: 'Klang' } },
+      // The request that carries the user's yes: a clean lookup by full name, then the pool change again.
+      { tool: 'listCandidates', input: { name: 'Zarina binti Hashim' } },
+      { tool: 'setPoolStatus', input: { id: A, status: 'passive' } },
+    ];
+    try {
+      const shown = await exchange([say('u1', 'Mark Zarina passive, and move the other one to Klang')], run, null);
+      expect(seen.refusals).toEqual([AMBIGUOUS]);
+      expect(waiting(shown)).toHaveLength(1);
+      expect(asks(shown, waiting(shown)[0]).action).toBe('updateCandidate');
+      // The first specialist's report, as the browser keeps it, names both ids as ambiguous: that is what the next request reads.
+      const reports = toolParts(shown).filter((p) => p.type === 'tool-askLekir').map((p) => (p as { output?: { ambiguous?: string[] } }).output?.ambiguous);
+      expect(reports[0]).toEqual(expect.arrayContaining([A, B]));
+
+      seen.refusals = [];
+      const after = await exchange(decide(shown, true), run, null);
+      expect(candidateSaved).toHaveBeenCalledTimes(1);
+      expect(seen.refusals.length).toBeGreaterThan(0);
+      for (const refusal of seen.refusals) expect(refusal).toBe(AMBIGUOUS);
+      expect(waiting(after)).toEqual([]);
+      expect(poolSet).not.toHaveBeenCalled();
+    } finally {
+      seen.workerScript = null;
+    }
+  });
+
+  describe.each(['lekir', 'tuah', 'team'] as const)('%s', (mode) => {
+    it.each(cases)('$name: the second card can be approved and runs once', async ({ first, change, second, line, ran }) => {
+      const { toToolStep } = await import('@/components/chat/tool-parts');
+      reset();
+      const [pool, twin] = [{ on: true }, { on: false }];
+      const run = runners[mode](world(pool, twin));
+      const own = mode !== 'team';
+      seen.workerScript = own ? null : [...lookups, first, second, 'answer'];
+      try {
+        const shown = await exchange([say('u1', 'Do this for the candidate Zarina binti Hashim')], run, own ? [lookups, [first]] : null);
+        expect(waiting(shown)).toHaveLength(1);
+        expect(asks(shown, waiting(shown)[0])).toEqual({ action: first.tool, input: first.input });
+
+        change(pool, twin);
+        // The yes arrives; the last check stops it; the assistant prepares the next thing, as the refusal tells it to.
+        const retried = await exchange(decide(shown, true), run, own ? again(second) : null);
+        expect(stopped(retried)).toHaveLength(1);
+        // What the person reads on the stopped card: "Not done", not "Not approved".
+        expect(toToolStep(stopped(retried)[0] as never, 'm', 0)).toMatchObject({ denied: true, afterApproval: true });
+        expect(waiting(retried)).toHaveLength(1);
+        expect(asks(retried, waiting(retried)[0])).toEqual({ action: second.tool, input: second.input });
+        if (line) expect(waiting(retried)[0].approval?.requestReason).toBe(LINE);
+
+        // The third request: the stopped call now comes back in the SDK's own words. The second card must still run.
+        const done = await exchange(decide(retried, true), run, own ? [] : null);
+        ran();
+        expect(stopped(done)).toHaveLength(1);
+        expect(waiting(done)).toEqual([]);
+      } finally {
+        seen.workerScript = null;
+      }
+    });
+
+    // The SDK writes a stopped call's result as the user's own reason when their yes carried one, and as its own
+    // words only when it did not. Knowing a stopped call must not rest on the chat sending no reason.
+    it('a yes that carries a reason: the stopped change is still not the turn\'s one, and the second card runs once', async () => {
+      reset();
+      const pool = { on: true };
+      const run = runners[mode](world(pool));
+      const own = mode !== 'team';
+      const [first, second] = [cases[0].first, cases[0].second];
+      seen.workerScript = own ? null : [...lookups, first, second, 'answer'];
+      try {
+        const shown = await exchange([say('u1', 'Do this for the candidate Zarina binti Hashim')], run, own ? [lookups, [first]] : null);
+        expect(waiting(shown)).toHaveLength(1);
+        pool.on = false;
+        const retried = await exchange(decide(shown, true, 'Yes, go ahead'), run, own ? again(second) : null);
+        expect(stopped(retried)).toHaveLength(1);
+        expect(stopped(retried)[0].approval?.reason).toBe('Yes, go ahead');
+        expect(waiting(retried)).toHaveLength(1);
+        const done = await exchange(decide(retried, true, 'Yes, this one too'), run, own ? [] : null);
+        cases[0].ran();
+        expect(waiting(done)).toEqual([]);
+      } finally {
+        seen.workerScript = null;
+      }
+    });
+    it('a no that carries a reason is still the user\'s no: the pool change stays the turn\'s one', async () => {
+      reset();
+      const run = runners[mode](world());
+      const own = mode !== 'team';
+      const first: Call = { tool: 'setPoolStatus', input: { id: A, status: 'passive' } };
+      const deletion: Call = { tool: 'deleteCandidate', input: { id: B } };
+      const another: Call = { tool: 'setPoolStatus', input: { id: B, status: 'available' } };
+      seen.workerScript = own ? null : [{ tool: 'listCandidates', input: {} }, first, deletion, another, 'answer'];
+      try {
+        const shown = await exchange([say('u1', 'Mark Zarina passive, delete Kamal, then mark Kamal available')], run, own ? [[{ tool: 'listCandidates', input: {} }], [first]] : null);
+        const second = await exchange(decide(shown, false, 'Not her'), run, own ? [[deletion]] : null);
+        expect(waiting(second)).toHaveLength(1);
+        const third = await exchange(decide(second, true, 'Yes'), run, own ? again(another) : null);
+        expect(candidateDeleted).toHaveBeenCalledTimes(1);
+        expect(waiting(third)).toEqual([]);
+        expect(poolSet).not.toHaveBeenCalled();
+      } finally {
+        seen.workerScript = null;
+      }
+    });
+
+    // The other side: what the user said no to, and what ran, are each still the turn's one. A deletion card in
+    // between gives the turn a third request, where the first card comes back in the browser's form.
+    it.each([['the user rejected', false], ['ran', true]] as const)('a pool change that %s is still the turn\'s one on a later request', async (_what, approved) => {
+      reset();
+      const run = runners[mode](world());
+      const own = mode !== 'team';
+      const first: Call = { tool: 'setPoolStatus', input: { id: A, status: 'passive' } };
+      const deletion: Call = { tool: 'deleteCandidate', input: { id: B } };
+      const another: Call = { tool: 'setPoolStatus', input: { id: B, status: 'available' } };
+      seen.workerScript = own ? null : [{ tool: 'listCandidates', input: {} }, first, deletion, another, 'answer'];
+      try {
+        const shown = await exchange([say('u1', 'Mark Zarina passive, delete Kamal, then mark Kamal available')], run, own ? [[{ tool: 'listCandidates', input: {} }], [first]] : null);
+        expect(waiting(shown)).toHaveLength(1);
+        const second = await exchange(decide(shown, approved), run, own ? [[deletion]] : null);
+        expect(poolSet).toHaveBeenCalledTimes(approved ? 1 : 0);
+        expect(waiting(second)).toHaveLength(1);
+        expect(asks(second, waiting(second)[0])).toEqual({ action: 'deleteCandidate', input: { id: B } });
+        const third = await exchange(decide(second, true), run, own ? again(another) : null);
+        expect(candidateDeleted).toHaveBeenCalledTimes(1);
+        // No card for the second pool change, and nothing of it saved.
+        expect(waiting(third)).toEqual([]);
+        expect(poolSet).toHaveBeenCalledTimes(approved ? 1 : 0);
+        if (own) {
+          expect(toolParts(third).filter((p) => p.approval?.isAutomatic).map((p) => p.approval?.reason)).toEqual([ONE_POOL_CHANGE]);
+        } else {
+          expect(seen.refusals.length).toBeGreaterThan(0);
+          for (const refusal of seen.refusals) expect(refusal).toBe(ONE_POOL_CHANGE);
+        }
+      } finally {
+        seen.workerScript = null;
+      }
+    });
+  });
+});
+
+// The pool lookup sees pool members only, so by a first name it can answer "one" when two people on file have it.
+// A deletion therefore takes only an id that listCandidates returned, which searches everyone and says when several
+// match. A pool change still takes an id from either lookup.
+describe('a deletion never rests on the pool lookup alone', () => {
+  const A = '11111111-1111-4111-8111-111111111171';
+  const B = '22222222-2222-4222-8222-222222222272';
+  type Message = import('ai').ModelMessage;
+  type Part = { type: string; isAutomatic?: boolean; approved?: boolean; reason?: string; toolCall?: { toolName?: string; input?: unknown } };
+  type Call = { tool: string; input: unknown };
+  const NOT_LOOKED_UP =
+    `You have not looked up ${A} as a candidate. Never guess an id: use listCandidates ` +
+    'to find the candidate and get its real id, then prepare the change again.';
+  const AMBIGUOUS =
+    'More than one match was found for that name, so no deletion was prepared. Stop here: say who matches and ask the user which one they mean. ' +
+    'Once the user has said who, they can ask for the deletion again.';
+  /** Two people called Zarina and nobody else: one in the pool, one on file outside it. */
+  const world = () => {
+    const base = hire().data;
+    const listCandidates = async () =>
+      (await base.listCandidates())
+        .filter((c, n) => n < 2 || !c.name.includes('Zarina'))
+        .map((c, n) =>
+          n === 0 ? { ...c, id: A, name: 'Zarina Lau', pool_status: 'passive' as const }
+            : n === 1 ? { ...c, id: B, name: 'Zarina binti Hashim', pool_status: 'none' as const } : c);
+    return { data: { ...base, listCandidates }, write: { ctx: { client: {} as never, orgId: 'org1' }, canWrite: true } };
+  };
+  const inPool: Call = { tool: 'listTalentPool', input: { name: 'Zarina' } };
+  const onFile: Call = { tool: 'listCandidates', input: { name: 'Zarina' } };
+  const remove: Call = { tool: 'deleteCandidate', input: { id: A } };
+  const mark: Call = { tool: 'setPoolStatus', input: { id: A, status: 'available' } };
+
+  /** One request to one agent: each list is one step of its model, which answers in words after the last. */
+  const alone = async (steps: Call[][], agent: 'tuah' | 'lekir') => {
+    candidateDeleted.mockReset();
+    poolSet.mockReset();
+    seen.calls = [];
+    seen.singleScript = steps;
+    try {
+      const messages = [{ role: 'user', content: 'Do it for Zarina' }] as Message[];
+      const result = agent === 'lekir' ? runLekir(messages, world()) : runTuah(messages, reach(), undefined, undefined, null, null, null, world());
+      await result.consumeStream();
+      const content = ((await result.steps) as unknown as { content: Part[] }[]).flatMap((s) => s.content);
+      return {
+        cards: content.filter((p) => p.type === 'tool-approval-request' && !p.isAutomatic),
+        denials: content.filter((p) => p.type === 'tool-approval-response' && p.approved === false).map((p) => p.reason),
+      };
+    } finally {
+      seen.singleScript = null;
+    }
+  };
+  /** One request to the team: what Lekir prepared and what it was refused. */
+  const team_ = async (script: NonNullable<typeof seen.workerScript>, names: Record<string, string> = {}) => {
+    candidateDeleted.mockReset();
+    poolSet.mockReset();
+    const context = { ...team(), names };
+    seen.calls = [];
+    seen.workerScript = script;
+    seen.workerStep = 0;
+    seen.refusals = [];
+    try {
+      await runTuah([{ role: 'user' as const, content: 'Do it for Zarina' }], reach(), undefined, undefined, null, null, context, world()).consumeStream();
+    } finally {
+      seen.workerScript = null;
+    }
+    return [...context.proposals.values()];
+  };
+
+  it('the pool lookup by that first name finds one person and says nothing of several: that is why it is not enough', async () => {
+    const tools = hireProduct(world()).read as unknown as Record<string, { execute: (i: unknown, o: unknown) => Promise<{ total: number; several_match?: string }> }>;
+    const pool = await tools.listTalentPool.execute({ name: 'Zarina' }, { toolCallId: 't', messages: [] });
+    expect(pool.total).toBe(1);
+    expect(pool.several_match).toBeUndefined();
+    const everyone = await tools.listCandidates.execute({ name: 'Zarina' }, { toolCallId: 't', messages: [] });
+    expect(everyone.total).toBe(2);
+    expect(everyone.several_match).toContain('Zarina Lau, Zarina binti Hashim');
+  });
+  it.each(['tuah', 'lekir'] as const)('%s: an id known only from the pool lookup gets no deletion card, and the model is sent to listCandidates', async (agent) => {
+    const run = await alone([[inPool], [remove]], agent);
+    expect(run.cards).toEqual([]);
+    expect(run.denials).toEqual([NOT_LOOKED_UP]);
+    expect(candidateDeleted).not.toHaveBeenCalled();
+  });
+  it.each(['tuah', 'lekir'] as const)('%s: after listCandidates by that name the deletion is held back, because several match', async (agent) => {
+    const run = await alone([[inPool], [onFile], [remove]], agent);
+    expect(run.cards).toEqual([]);
+    expect(run.denials).toEqual([AMBIGUOUS]);
+  });
+  it.each(['tuah', 'lekir'] as const)('%s: a pool change from the same pool lookup still gets its card', async (agent) => {
+    const run = await alone([[inPool], [mark]], agent);
+    expect(run.denials).toEqual([]);
+    expect(run.cards).toHaveLength(1);
+    expect(run.cards[0].toolCall).toMatchObject({ toolName: 'setPoolStatus', input: { id: A, status: 'available' } });
+  });
+  it('team: an id known only from the pool lookup is refused for a deletion, in the delegation that looked it up', async () => {
+    expect(await team_([inPool, remove, 'answer'])).toEqual([]);
+    expect(seen.refusals[0]).toBe(NOT_LOOKED_UP);
+    expect(candidateDeleted).not.toHaveBeenCalled();
+  });
+  it('team: after listCandidates by that name the deletion is held back, because several match', async () => {
+    expect(await team_([inPool, onFile, remove, 'answer'])).toEqual([]);
+    expect(seen.refusals[0]).toBe(AMBIGUOUS);
+  });
+  it('team: a pool change from the same pool lookup is still prepared', async () => {
+    const proposals = await team_([inPool, mark]);
+    expect(seen.refusals).toEqual([]);
+    expect(proposals).toHaveLength(1);
+    expect(proposals[0]).toMatchObject({ action: 'setPoolStatus', input: { id: A, status: 'available' } });
+  });
+  it('team: an id an earlier turn knew only from the pool lookup, or from a pool change, is refused too; one listCandidates returned is accepted', async () => {
+    const { collectNames } = await import('@/lib/chat/change-titles');
+    const pooled = { tool: 'listTalentPool', output: { total: 1, candidates: [{ id: A, name: 'Zarina Lau' }] } };
+    const changed = { tool: 'setPoolStatus', output: { ok: true, data: { id: A, name: 'Zarina Lau', from: 'available', to: 'passive', message: 'x' } } };
+    const listed = { tool: 'listCandidates', output: { total: 1, candidates: [{ id: A, name: 'Zarina Lau' }] } };
+    for (const earlier of [[pooled], [changed], [pooled, changed]]) {
+      expect(await team_([remove, 'answer'], collectNames(earlier))).toEqual([]);
+      expect(seen.refusals[0]).toBe(NOT_LOOKED_UP);
+      // The same names still serve a pool change.
+      expect(await team_([mark], collectNames(earlier))).toHaveLength(1);
+    }
+    // In either order, and from two reports put together as the chat's names are.
+    for (const earlier of [[pooled, listed], [listed, pooled]]) {
+      expect((await team_([remove], collectNames(earlier)))[0]).toMatchObject({ action: 'deleteCandidate', input: { id: A } });
+    }
+    expect((await team_([remove], { ...collectNames([listed]), ...collectNames([pooled]) }))[0]).toMatchObject({ action: 'deleteCandidate' });
+    // Names kept before the pool lookup returned ids carry no mark of where they came from: they are as they were.
+    expect((await team_([remove], { [`candidate:${A}`]: 'Zarina Lau' }))[0]).toMatchObject({ action: 'deleteCandidate' });
   });
 });

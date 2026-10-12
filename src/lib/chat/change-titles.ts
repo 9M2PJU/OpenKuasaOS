@@ -7,6 +7,7 @@
 import { describeFormChange } from '@/lib/hire/application-form';
 import { REASON_LABEL } from '@/lib/hire/application-changes';
 import { STAGE_LABEL } from '@/lib/hire/applications-view';
+import { PIPELINE_CARD_DETAIL, pipelineCardTitle, poolCardDetail, poolCardTitle } from '@/lib/hire/pool';
 import { isRealDate, monthLabel, weekdayName } from '@/lib/people/dates';
 import { blank, hhmm } from '@/lib/people/loose-input';
 import { toPeriod, toScore } from '@/lib/people/performance-forms';
@@ -176,6 +177,10 @@ const KIND_OF_TOOL: Record<string, ItemKind> = {
   addCandidate: 'candidate',
   updateCandidate: 'candidate',
   deleteCandidate: 'candidate',
+  // The pool lookup's rows, and both pool changes' results, carry the candidate's `id` and `name`.
+  listTalentPool: 'candidate',
+  setPoolStatus: 'candidate',
+  moveToPipeline: 'candidate',
   listEmployees: 'employee',
   getEmployee: 'employee',
   createEmployee: 'employee',
@@ -243,6 +248,29 @@ function gather(value: unknown, kind: ItemKind, into: KnownNames, depth = 0): vo
 }
 
 /**
+ * The tools that name a candidate from the talent pool's side: the pool lookup, which sees pool members only, and
+ * the two pool changes, whose id may have come from it. By a first name the pool lookup can answer "one" when two
+ * people on file have that name, so an id known only from these is not enough for a deletion (see `knownOnFile`).
+ */
+const POOL_SIDE_TOOLS = new Set(['listTalentPool', 'setPoolStatus', 'moveToPipeline']);
+const FROM_POOL = 'candidate-from-pool:';
+const ON_FILE = 'candidate-on-file:';
+
+/** These results without the ones that name a candidate from the pool's side only. */
+export function withoutPoolSide(results: ToolResult[]): ToolResult[] {
+  return results.filter((result) => !POOL_SIDE_TOOLS.has(result.tool));
+}
+
+/**
+ * True when the names kept from earlier turns hold this candidate from a lookup of everyone on file, and not only
+ * from the pool's side. Names kept before the pool lookup returned ids carry neither mark, and count as on file.
+ */
+export function knownOnFile(names: KnownNames | undefined, id: unknown): boolean {
+  if (!names || typeof id !== 'string' || !names[`candidate:${id}`]) return false;
+  return Boolean(names[`${ON_FILE}${id}`]) || !names[`${FROM_POOL}${id}`];
+}
+
+/**
  * Tools whose results name an employee beside their `employee_id` (a goal, a review, an enrolment): the person is
  * known from them as well as from listEmployees, because these are the lookups the change tools point the model to.
  */
@@ -275,6 +303,21 @@ function eachNamedEmployee(value: unknown, each: (id: string, name: string) => v
 export function collectNames(results: ToolResult[], into: KnownNames = {}): KnownNames {
   for (const result of results) {
     const kind = KIND_OF_TOOL[result.tool];
+    if (kind === 'candidate') {
+      // A candidate's name is kept with a mark of which side it came from, or not at all: a name whose mark
+      // did not fit under the cap would read as one from before the marks, which counts as on file.
+      const found: KnownNames = {};
+      gather(result.output, kind, found);
+      const prefix = POOL_SIDE_TOOLS.has(result.tool) ? FROM_POOL : ON_FILE;
+      for (const [key, label] of Object.entries(found)) {
+        const mark = `${prefix}${key.slice('candidate:'.length)}`;
+        const more = (key in into ? 0 : 1) + (mark in into ? 0 : 1);
+        if (Object.keys(into).length + more > NAMES_MAX) continue;
+        into[key] = label;
+        into[mark] = '1';
+      }
+      continue;
+    }
     // Payslips and their lines are read in order below, so the newest word on each one wins.
     if (kind && kind !== 'payslip') gather(result.output, kind, into);
   }
@@ -1343,6 +1386,14 @@ export function approvalTitle(
       const name = find(i.id, 'candidate');
       return `Delete ${name ? `candidate “${name}”` : UNLISTED_CANDIDATE}?`;
     }
+    case 'setPoolStatus': {
+      const name = find(i.id, 'candidate');
+      return poolCardTitle(name ? `candidate “${name}”` : UNLISTED_CANDIDATE, i.status, i.only_if_outside);
+    }
+    case 'moveToPipeline': {
+      const name = find(i.id, 'candidate');
+      return pipelineCardTitle(name ? `candidate “${name}”` : UNLISTED_CANDIDATE, find(i.job_id, 'job'));
+    }
     case 'createEmployee': return `Add employee “${i.name ?? ''}”?`;
     case 'updateEmployee': return `Save changes to ${the('employee', 'employee')}?`;
     case 'setEmployeeStatus':
@@ -1667,6 +1718,9 @@ export function approvalDetail(
   if (toolName === 'deleteCandidate') {
     return 'Every application, interview and CV file of theirs is deleted too. This cannot be undone.';
   }
+  // Fixed sentences. Which of two same-named people it is, is said on a line of its own, read on the server (hire-pool-gate.ts).
+  if (toolName === 'setPoolStatus') return poolCardDetail(i.status);
+  if (toolName === 'moveToPipeline') return PIPELINE_CARD_DETAIL;
   if (toolName === 'submitClaim') {
     // What will be saved under the person's name. The receipt line comes from the conversation (the file on the
     // question that led to the claim), never from anything the assistant put in the input; unknown, it says nothing.

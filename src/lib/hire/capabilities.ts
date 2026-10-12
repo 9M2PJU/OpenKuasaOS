@@ -9,12 +9,13 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 import { REJECT_REASONS, changeMessage, type RejectReason } from './application-changes';
 import { CANDIDATE_LIMITS, addedMessage, candidateMessage } from './candidate-fields';
+import { isInPool, isPoolStatus, movedMessage, poolChangedMessage, poolRefusal } from './pool';
 import {
   DELETE_FAILED, SUMMARY_FAILED, deletedMessage, deletionMessage, type DeletionKind, type Removal,
 } from './deletion';
 import {
   APPLICATION_STAGES, DEFAULT_HIRE_SETTINGS, JOB_COLUMNS, SETTINGS_COLUMNS,
-  type ApplicationOutcome, type ApplicationStage, type HireSettings, type Job, type JobStatus,
+  type ApplicationOutcome, type ApplicationStage, type HireSettings, type Job, type JobStatus, type PoolStatus,
 } from './types';
 
 export type HireWriteContext = { client: SupabaseClient; orgId: string };
@@ -69,8 +70,21 @@ export const createJobInput = z.object({
   show_salary: jobFields.show_salary.default(false),
   headcount: jobFields.headcount.default(1),
 });
+/**
+ * What a made-up id is answered with. The assistant's tools check their input against these schemas before
+ * anything else runs, so this is all a model is told when it invents an id: it has to say where a real one
+ * comes from. No screen can send one (they pass ids the page was given). The id itself is not repeated.
+ */
+const NOT_A_JOB_ID = 'That is not a job\'s id. Look the job up with listJobs and use the id it returns. Never make one up.';
+const NOT_AN_APPLICATION_ID =
+  'That is not an application\'s id. Look it up with listApplications and use the id it returns. Never make one up.';
+const NOT_A_CANDIDATE_ID =
+  'That is not a candidate\'s id. Look the person up with listCandidates and use the id it returns. Never make one up.';
+const NOT_A_LOOKED_UP_ID =
+  'That is not an id from a lookup. Look it up with listApplications or listCandidates and use the id it returns. Never make one up.';
+
 export const updateJobInput = z.object({
-  id: z.string().uuid().describe('The job\'s id, from listJobs.'),
+  id: z.string().uuid(NOT_A_JOB_ID).describe('The job\'s id, from listJobs.'),
   title: jobFields.title.optional(),
   department: jobFields.department,
   location: jobFields.location,
@@ -84,10 +98,10 @@ export const updateJobInput = z.object({
   headcount: jobFields.headcount.optional(),
 });
 export const setJobStatusInput = z.object({
-  id: z.string().uuid().describe('The job\'s id, from listJobs.'),
+  id: z.string().uuid(NOT_A_JOB_ID).describe('The job\'s id, from listJobs.'),
   status: z.enum(['open', 'paused', 'closed']).describe('open, paused or closed.'),
 });
-export const deleteJobInput = z.object({ id: z.string().uuid().describe('The job\'s id, from listJobs.') });
+export const deleteJobInput = z.object({ id: z.string().uuid(NOT_A_JOB_ID).describe('The job\'s id, from listJobs.') });
 
 /** Today's date in Kuala Lumpur, as YYYY-MM-DD. */
 const klToday = (now: Date) => now.toLocaleDateString('en-CA', { timeZone: 'Asia/Kuala_Lumpur' });
@@ -382,7 +396,7 @@ export async function updateApplicationForm(
 
 // ─── changing an application (four database functions, called by rpc) ────────
 
-const applicationId = () => z.string().uuid().describe('The application\'s id, from listApplications.');
+const applicationId = () => z.string().uuid(NOT_AN_APPLICATION_ID).describe('The application\'s id, from listApplications.');
 
 export const moveApplicationInput = z.object({
   id: applicationId(),
@@ -550,14 +564,14 @@ export const addCandidateInput = z.object({
   name: z.string().trim().min(1, 'Enter the candidate\'s name.').max(CANDIDATE_LIMITS.name, 'Keep the name to 120 characters or fewer.')
     .describe('The candidate\'s full name.'),
   ...candidateFields(false),
-  job_id: z.string().uuid().nullable().optional()
+  job_id: z.string().uuid(NOT_A_JOB_ID).nullable().optional()
     .describe('The job to add an application for, from listJobs. Leave out to add the person without an application.'),
   cover_letter: text(CANDIDATE_LIMITS.coverLetter, 'A cover note for the application. Only kept when a job is given. Leave out when there is none.'),
   cv_url: text(CANDIDATE_LIMITS.url, 'A link to the candidate\'s CV, starting with https://. Only kept when a job is given. Leave out when there is none.'),
 });
 
 export const updateCandidateInput = z.object({
-  id: z.string().uuid().describe('The candidate\'s id, from listCandidates.'),
+  id: z.string().uuid(NOT_A_CANDIDATE_ID).describe('The candidate\'s id, from listCandidates.'),
   name: z.string().trim().min(1, 'Enter the candidate\'s name.').max(CANDIDATE_LIMITS.name, 'Keep the name to 120 characters or fewer.')
     .optional().describe('The candidate\'s full name. Cannot be cleared.'),
   ...candidateFields(true),
@@ -697,12 +711,12 @@ export async function attachCandidateCv(service: SupabaseClient, applicationId: 
 
 export const deleteApplicationInput = z.object({ id: applicationId() });
 export const deleteCandidateInput = z.object({
-  id: z.string().uuid().describe('The candidate\'s id, from listCandidates.'),
+  id: z.string().uuid(NOT_A_CANDIDATE_ID).describe('The candidate\'s id, from listCandidates.'),
 });
 export const deletionSummaryInput = z.object({
   kind: z.enum(['application', 'candidate'])
     .describe('What would be deleted: one application, or one candidate with everything of theirs.'),
-  id: z.string().uuid().describe('The id of that application or candidate.'),
+  id: z.string().uuid(NOT_A_LOOKED_UP_ID).describe('The id of that application or candidate.'),
 });
 
 /** What a deletion removed, as the database function said, and the sentence for it. */
@@ -884,4 +898,119 @@ export async function deletionSummary(
   } catch (error) {
     return summaryFailed(error);
   }
+}
+
+// ─── the talent pool (two database functions, called by rpc) ─────────────────
+
+const candidateId = () => z.string().uuid(NOT_A_CANDIDATE_ID).describe('The candidate\'s id, from listCandidates or listTalentPool.');
+
+export const setPoolStatusInput = z.object({
+  id: candidateId(),
+  status: z.enum(['available', 'passive', 're_engaged', 'none']).describe(
+    'available: open to hearing about a role now. passive: not looking right now, worth keeping in touch for later. '
+    + 're_engaged: back in touch and put forward for a job again. none removes them from the pool; they stay on file.',
+  ),
+  only_if_outside: z.boolean().optional().describe(
+    'Set true when ADDING someone to the pool: it is then refused, changing nothing, if they are already in it. '
+    + 'Leave out when changing the status of someone already in the pool, or removing them.',
+  ),
+});
+export const moveToPipelineInput = z.object({
+  id: candidateId(),
+  job_id: z.string().uuid(NOT_A_JOB_ID).describe('The job to add an application for, from listJobs. It must be open or paused.'),
+});
+
+/** What a pool status change did, and the sentence for it. `from` is null when the answer did not say where the person was. */
+export type PoolChange = { id: string; name: string; from: PoolStatus | null; to: PoolStatus; message: string };
+/** What a move to the pipeline did. `id` is the candidate's; the application is new. */
+export type MovedToPipeline = {
+  id: string;
+  name: string;
+  application_id: string | null;
+  job_id: string;
+  job: string | null;
+  from: PoolStatus | null;
+  to: 're_engaged';
+  message: string;
+};
+
+/** The words that need no name in their sentence: the person is not read for them. */
+const NAMELESS_REFUSALS = ['not_found', 'forbidden', 'invalid_status', 'job_not_found', 'job_not_open'];
+
+/**
+ * Sets one candidate's pool status: adds them (from none), changes it, or
+ * removes them (to none). The change is saved once the function says ok, so a
+ * name that cannot be read back still answers ok, with the name left out.
+ */
+export async function setPoolStatus(
+  ctx: HireWriteContext,
+  input: z.input<typeof setPoolStatusInput>,
+): Promise<CapResult<PoolChange>> {
+  const parsed = setPoolStatusInput.safeParse(input);
+  if (!parsed.success) return invalid(parsed.error);
+  const { id, status } = parsed.data;
+  const onlyIfOutside = parsed.data.only_if_outside === true;
+  let answer: unknown;
+  try {
+    const { data, error } = await ctx.client.rpc('hire_set_pool_status', {
+      p_candidate_id: id, p_status: status, p_only_if_outside: onlyIfOutside,
+    });
+    if (error) return changeFailed('setPoolStatus', error);
+    answer = data;
+  } catch (error) {
+    return changeFailed('setPoolStatus', error);
+  }
+  const word = wordOf(answer);
+  if (typeof word !== 'string' || NAMELESS_REFUSALS.includes(word)) return { ok: false, error: poolRefusal(word) };
+  const got = (answer && typeof answer === 'object' ? answer : {}) as { from?: unknown };
+  const name = (await readColumn(ctx, 'hire_candidates', 'name', id)) ?? '';
+  if (word !== 'ok') {
+    // "The status they already have" is the one that was asked for, when the answer does not say.
+    const from = isPoolStatus(got.from) ? got.from : word === 'same_status' ? status : undefined;
+    return { ok: false, error: poolRefusal(word, { name, from }) };
+  }
+  // Only what the answer says or the request itself implies: an add was from outside the pool.
+  const from: PoolStatus | null = isPoolStatus(got.from) ? got.from : onlyIfOutside ? 'none' : null;
+  return { ok: true, data: { id, name, from, to: status, message: poolChangedMessage(name, from, status) } };
+}
+
+/**
+ * Gives one pool member a new application at Applied for an open or paused
+ * job, and marks them Re-engaged. If they had already applied for that job the
+ * function changes nothing and the sentence says so.
+ */
+export async function moveToPipeline(
+  ctx: HireWriteContext,
+  input: z.input<typeof moveToPipelineInput>,
+): Promise<CapResult<MovedToPipeline>> {
+  const parsed = moveToPipelineInput.safeParse(input);
+  if (!parsed.success) return invalid(parsed.error);
+  const { id, job_id: jobId } = parsed.data;
+  let answer: unknown;
+  try {
+    const { data, error } = await ctx.client.rpc('hire_move_to_pipeline', { p_candidate_id: id, p_job_id: jobId });
+    if (error) return changeFailed('moveToPipeline', error);
+    answer = data;
+  } catch (error) {
+    return changeFailed('moveToPipeline', error);
+  }
+  const word = wordOf(answer);
+  if (typeof word !== 'string' || NAMELESS_REFUSALS.includes(word)) return { ok: false, error: poolRefusal(word) };
+  const got = (answer && typeof answer === 'object' ? answer : {}) as { application_id?: unknown; from?: unknown; outcome?: unknown };
+  const name = (await readColumn(ctx, 'hire_candidates', 'name', id)) ?? '';
+  const job = await readColumn(ctx, 'hire_jobs', 'title', jobId);
+  if (word !== 'ok') return { ok: false, error: poolRefusal(word, { name, job, outcome: got.outcome }) };
+  return {
+    ok: true,
+    data: {
+      id,
+      name,
+      application_id: typeof got.application_id === 'string' ? got.application_id : null,
+      job_id: jobId,
+      job,
+      from: isInPool(got.from) ? got.from : null,
+      to: 're_engaged',
+      message: movedMessage(name, job),
+    },
+  };
 }

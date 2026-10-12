@@ -8,7 +8,7 @@
  */
 import type { ModelMessage } from 'ai';
 import { isHeldCvMessage } from '@/lib/ai/hire-tools';
-import { nameIn } from '@/lib/chat/change-titles';
+import { nameIn, withoutPoolSide } from '@/lib/chat/change-titles';
 import { fullDate } from '@/lib/hire/lists';
 import { namesakesFromLists, sameText } from '@/lib/hire/namesakes';
 import type { HireData, Namesake, Namesakes } from '@/lib/hire/types';
@@ -48,6 +48,10 @@ const GATE_REASON_STARTS = [
   'Two applications from someone called ',
   'I could not check ',
   'Someone else with the same name appeared ',
+  // The talent pool's gate (hire-pool-gate.ts). Its other sentences begin as the ones above do, on purpose.
+  'One talent pool change at a time.',
+  'This candidate is not in the talent pool',
+  'A candidate with the same name appeared ',
 ];
 export function isGateReason(reason: unknown): boolean {
   return typeof reason === 'string' && GATE_REASON_STARTS.some((start) => reason.startsWith(start));
@@ -93,6 +97,52 @@ export function thisTurn(messages: readonly ModelMessage[]): ModelMessage[] {
   return messages.slice(from);
 }
 
+/** What the SDK writes as the result of a denied call whose answer carried no reason. With a reason, it writes the reason. */
+const DENIED_WITHOUT_REASON = 'Tool call execution denied.';
+
+/**
+ * The calls in these messages that the user approved and a gate's last check then stopped, by call id. Such a call
+ * never ran. The SDK asks a gate again about an approved call when the user's yes arrives; when the gate then says
+ * no, the browser is told only that the call was denied, and it keeps the user's yes on the part. So on the next
+ * request the call reads: a card of its own (not an automatic one), the user's answer to that card with
+ * `approved: true`, and a result that is a denial. Three other things look near it and are not it:
+ * - the user said no: the answer says `approved: false`;
+ * - the change ran: its result is the change's own output, not a denial;
+ * - a gate refused it before any card: its card is an automatic one, which no user answered.
+ *
+ * All three parts are parts of the conversation's structure, written by the SDK from the tool part's state. Text
+ * cannot make one: a name, a CV, a cover letter or a message from the user is only ever a string inside a part.
+ *
+ * What a denial reads as, from the browser: the SDK writes the result of a denied call as the reason on the user's
+ * answer, or as its own words when the answer has none (`convertToModelMessages`, the `output-denied` case). The
+ * chat sends no reason with a yes today, but this does not count on that: the result is compared with whatever the
+ * answer itself says. A change that ran and threw has an error text of its own, which is neither.
+ */
+export function stoppedAfterApproval(turn: readonly ModelMessage[]): Set<unknown> {
+  const cardOf = new Map<unknown, unknown>();
+  /** Each approved call, with what the SDK writes as its result if it was then denied. */
+  const approved = new Map<unknown, unknown>();
+  const ids = new Set<unknown>();
+  type Wide = MessagePart & { approvalId?: unknown; approved?: unknown; isAutomatic?: unknown; reason?: unknown };
+  for (const message of turn) {
+    for (const part of partsOf(message) as Wide[]) {
+      if (message.role === 'assistant' && part.type === 'tool-approval-request' && part.isAutomatic !== true) {
+        cardOf.set(part.approvalId, part.toolCallId);
+      } else if (message.role === 'tool' && part.type === 'tool-approval-response' && part.approved === true && cardOf.has(part.approvalId)) {
+        approved.set(cardOf.get(part.approvalId), part.reason ?? DENIED_WITHOUT_REASON);
+      } else if (message.role === 'tool' && part.type === 'tool-result' && approved.has(part.toolCallId)) {
+        const output = part.output as { type?: unknown; reason?: unknown; value?: unknown } | null | undefined;
+        // In the request that stopped it the result is a denial outright: the user had said yes, so only a gate
+        // can have denied it. From the browser it is an error whose text is the answer's reason, or the SDK's words.
+        const denial =
+          output?.type === 'execution-denied' || (output?.type === 'error-text' && output.value === approved.get(part.toolCallId));
+        if (denial) ids.add(part.toolCallId);
+      }
+    }
+  }
+  return ids;
+}
+
 /**
  * The calls in these messages that the gate below denied itself, by call id.
  * Such a call never became a card, so it is not the turn's one deletion: the
@@ -102,7 +152,8 @@ export function thisTurn(messages: readonly ModelMessage[]): ModelMessage[] {
  * request as `execution-denied`, from the browser as `error-text`.
  */
 export function deniedHere(turn: readonly ModelMessage[]): Set<unknown> {
-  const ids = new Set<unknown>();
+  // A call stopped after the user's yes is over too: it never ran, and what replaces it must be able to reach a card.
+  const ids = stoppedAfterApproval(turn);
   for (const message of turn) {
     if (message.role !== 'tool') continue;
     for (const part of partsOf(message)) {
@@ -164,7 +215,11 @@ export function lookedUp(messages: readonly ModelMessage[], kind: DeletionKind, 
       const output = part.output as { type?: unknown; value?: unknown } | null | undefined;
       return { tool: part.toolName as string, output: output?.type === 'json' ? output.value : null };
     });
-  return nameIn(results)(id, kind) !== null;
+  // A candidate to delete must have come from a lookup of everyone on file. The pool lookup sees pool members only:
+  // by a first name it can find one person when two on file have that name, and so never asks "which one?".
+  // The other way for the person: the Talent Pool row's own "Delete candidate", or ask again, and the assistant
+  // looks the candidate up with listCandidates first (the refusal sends it there).
+  return nameIn(kind === 'candidate' ? withoutPoolSide(results) : results)(id, kind) !== null;
 }
 
 /*

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { approvalDetail, approvalTitle, collectNames, nameIn } from '@/lib/chat/change-titles';
+import { approvalDetail, approvalTitle, collectNames, knownOnFile, nameIn, withoutPoolSide } from '@/lib/chat/change-titles';
 
 const ID = '33333333-3333-4333-8333-333333333333';
 const names = collectNames([{ tool: 'listJobs', output: { total: 1, jobs: [{ id: ID, name: 'Sales Executive' }] } }]);
@@ -186,7 +186,8 @@ describe('approval cards for a candidate', () => {
     const added = [{ tool: 'addCandidate', output: { ok: true, data: { id: CAND, name: 'Aina Rahman', job_id: JOB, job: 'Barista', message: 'Added Aina Rahman.' } } }];
     const known = collectNames(added);
     expect(known[`candidate:${CAND}`]).toBe('Aina Rahman');
-    expect(Object.keys(known)).toEqual([`candidate:${CAND}`]);
+    // Only the candidate is named, with the mark that the name came from a lookup of everyone on file: the job is not.
+    expect(Object.keys(known)).toEqual([`candidate:${CAND}`, `candidate-on-file:${CAND}`]);
     const saved = [{ tool: 'updateCandidate', output: { ok: true, data: { id: CAND, name: 'Aina R.' } } }];
     expect(collectNames(saved)[`candidate:${CAND}`]).toBe('Aina R.');
   });
@@ -271,5 +272,111 @@ describe('approval cards for a deletion', () => {
   it('remembers a deleted candidate\'s name, so a later sentence can still say who it was', () => {
     const done = [{ tool: 'deleteCandidate', output: { ok: true, data: { id: PERSON, name: 'Aina Rahman', job: null, applications: 2, interviews: 0, cv_files: 0, message: 'Deleted Aina Rahman, with 2 applications.' } } }];
     expect(collectNames(done)[`candidate:${PERSON}`]).toBe('Aina Rahman');
+  });
+});
+
+describe('approval cards for the talent pool', () => {
+  const PERSON = '88888888-8888-4888-8888-888888888881';
+  const JOB = '77777777-7777-4777-8777-777777777771';
+  const STRANGER = '99999999-9999-4999-8999-999999999991';
+  const candidates = {
+    tool: 'listCandidates',
+    output: { total: 1, candidates: [{ id: PERSON, name: 'Aina binti Salleh', headline: 'Sales Executive', location: 'Kuala Lumpur', pool_status: 'passive' }] },
+  };
+  const jobs = { tool: 'listJobs', output: { total: 1, jobs: [{ id: JOB, name: 'Sales Executive' }] } };
+  const found = nameIn([candidates, jobs]);
+
+  it('says add, mark or remove, naming the person', () => {
+    expect(approvalTitle('setPoolStatus', { id: PERSON, status: 'available', only_if_outside: true }, found))
+      .toBe('Add candidate “Aina binti Salleh” to the talent pool as Available?');
+    expect(approvalTitle('setPoolStatus', { id: PERSON, status: 'passive' }, found))
+      .toBe('Mark candidate “Aina binti Salleh” as Passive in the talent pool?');
+    expect(approvalTitle('setPoolStatus', { id: PERSON, status: 're_engaged', only_if_outside: false }, found))
+      .toBe('Mark candidate “Aina binti Salleh” as Re-engaged in the talent pool?');
+    expect(approvalTitle('setPoolStatus', { id: PERSON, status: 'none' }, found))
+      .toBe('Remove candidate “Aina binti Salleh” from the talent pool?');
+  });
+  it('names the person and the job on a move', () => {
+    expect(approvalTitle('moveToPipeline', { id: PERSON, job_id: JOB }, found))
+      .toBe('Move candidate “Aina binti Salleh” to the pipeline for “Sales Executive”?');
+    expect(approvalTitle('moveToPipeline', { id: PERSON, job_id: STRANGER }, found))
+      .toBe('Move candidate “Aina binti Salleh” to the pipeline for a job?');
+  });
+  it('never names someone from an id of another kind, or one that was not looked up', () => {
+    expect(approvalTitle('setPoolStatus', { id: JOB, status: 'passive' }, found)).toBe('Mark a candidate that was not in the list above as Passive in the talent pool?');
+    expect(approvalTitle('setPoolStatus', { id: STRANGER, status: 'none' }, found)).toBe('Remove a candidate that was not in the list above from the talent pool?');
+    expect(approvalTitle('moveToPipeline', { id: STRANGER, job_id: PERSON }, found)).toBe('Move a candidate that was not in the list above to the pipeline for a job?');
+    expect(approvalTitle('setPoolStatus', {})).toBe('Change the talent pool status of a candidate that was not in the list above?');
+  });
+  it('the second line says what the status means, or what a removal keeps, or what a move does', () => {
+    expect(approvalDetail('setPoolStatus', { id: PERSON, status: 'available', only_if_outside: true }, undefined, found))
+      .toBe('Available: Open to hearing about a role now.');
+    expect(approvalDetail('setPoolStatus', { id: PERSON, status: 'passive' }, undefined, found))
+      .toBe('Passive: Not looking right now. Worth keeping in touch for later.');
+    expect(approvalDetail('setPoolStatus', { id: PERSON, status: 're_engaged' }, undefined, found))
+      .toBe('Re-engaged: You have been back in touch and put them forward for a job again.');
+    expect(approvalDetail('setPoolStatus', { id: PERSON, status: 'none' }, undefined, found))
+      .toBe('They stay on file with their details and applications.');
+    expect(approvalDetail('moveToPipeline', { id: PERSON, job_id: JOB }, undefined, found))
+      .toBe('Adds an application at Applied and marks them Re-engaged. They stay in the talent pool.');
+  });
+  it('has no second line for a status that is not one, or without a usable input', () => {
+    expect(approvalDetail('setPoolStatus', { id: PERSON, status: 'shortlisted' }, undefined, found)).toBeNull();
+    expect(approvalDetail('setPoolStatus')).toBeNull();
+    expect(approvalDetail('setPoolStatus', 'text')).toBeNull();
+    // A move's line is fixed: nothing in it comes from the model.
+    expect(approvalDetail('moveToPipeline')).toBe('Adds an application at Applied and marks them Re-engaged. They stay in the talent pool.');
+  });
+  it('an id from the pool lookup counts as a candidate\'s, and never as a job\'s', () => {
+    const pool = nameIn([{ tool: 'listTalentPool', output: { total: 1, candidates: [{ id: PERSON, name: 'Aina binti Salleh' }] } }]);
+    expect(pool(PERSON, 'candidate')).toBe('Aina binti Salleh');
+    expect(pool(PERSON, 'job')).toBeNull();
+    expect(approvalTitle('setPoolStatus', { id: PERSON, status: 'none' }, pool)).toBe('Remove candidate “Aina binti Salleh” from the talent pool?');
+  });
+  it('remembers who a pool change was about, from its result', () => {
+    const done = [
+      { tool: 'setPoolStatus', output: { ok: true, data: { id: PERSON, name: 'Aina binti Salleh', from: 'none', to: 'available', message: 'Added Aina binti Salleh to the talent pool as Available.' } } },
+      { tool: 'moveToPipeline', output: { ok: true, data: { id: STRANGER, name: 'Kamal Ariffin', application_id: JOB, job_id: JOB, job: 'Sales Executive', from: 'available', to: 're_engaged', message: 'x' } } },
+    ];
+    const kept = collectNames(done);
+    expect(kept[`candidate:${PERSON}`]).toBe('Aina binti Salleh');
+    expect(kept[`candidate:${STRANGER}`]).toBe('Kamal Ariffin');
+  });
+});
+
+describe('where a candidate\'s name came from, for a deletion', () => {
+  const PERSON = '88888888-8888-4888-8888-888888888882';
+  const pooled = { tool: 'listTalentPool', output: { total: 1, candidates: [{ id: PERSON, name: 'Zarina Lau' }] } };
+  const changed = { tool: 'setPoolStatus', output: { ok: true, data: { id: PERSON, name: 'Zarina Lau', from: 'none', to: 'available', message: 'x' } } };
+  const moved = { tool: 'moveToPipeline', output: { ok: true, data: { id: PERSON, name: 'Zarina Lau', application_id: null, job_id: 'j', job: null, from: 'available', to: 're_engaged', message: 'x' } } };
+  const listed = { tool: 'listCandidates', output: { total: 1, candidates: [{ id: PERSON, name: 'Zarina Lau' }] } };
+
+  it('a name known only from the pool\'s side is not known as on file; one from a lookup of everyone is', () => {
+    for (const side of [pooled, changed, moved]) {
+      const names = collectNames([side]);
+      expect(names[`candidate:${PERSON}`], side.tool).toBe('Zarina Lau');
+      expect(knownOnFile(names, PERSON), side.tool).toBe(false);
+    }
+    expect(knownOnFile(collectNames([listed]), PERSON)).toBe(true);
+    expect(knownOnFile(collectNames([pooled, listed]), PERSON)).toBe(true);
+    expect(knownOnFile(collectNames([listed, pooled]), PERSON)).toBe(true);
+    // Two reports put together, as the chat's names are.
+    expect(knownOnFile({ ...collectNames([listed]), ...collectNames([pooled]) }, PERSON)).toBe(true);
+    // Names kept before there were marks are as they were; someone never named is not known at all.
+    expect(knownOnFile({ [`candidate:${PERSON}`]: 'Zarina Lau' }, PERSON)).toBe(true);
+    expect(knownOnFile({}, PERSON)).toBe(false);
+    expect(knownOnFile(undefined, PERSON)).toBe(false);
+    for (const odd of [undefined, null, '', 7]) expect(knownOnFile(collectNames([listed]), odd)).toBe(false);
+  });
+  it('a name is kept with its mark or not at all, so the cap can never turn a pool-side name into one on file', () => {
+    const full = Object.fromEntries(Array.from({ length: 199 }, (_, n) => [`job:${n}`, 'x']));
+    const names = collectNames([pooled], full);
+    expect(names[`candidate:${PERSON}`]).toBeUndefined();
+    expect(knownOnFile(names, PERSON)).toBe(false);
+  });
+  it('withoutPoolSide drops the pool lookup and the two pool changes, and nothing else', () => {
+    expect(withoutPoolSide([pooled, listed, changed, moved]).map((r) => r.tool)).toEqual(['listCandidates']);
+    expect(nameIn(withoutPoolSide([pooled]))(PERSON, 'candidate')).toBeNull();
+    expect(nameIn([pooled])(PERSON, 'candidate')).toBe('Zarina Lau');
   });
 });
