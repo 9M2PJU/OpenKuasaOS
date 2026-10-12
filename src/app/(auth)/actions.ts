@@ -7,6 +7,11 @@ import { createClient } from '@/lib/supabase/server';
 import { REMEMBER_COOKIE } from '@/lib/supabase/remember';
 import { recordEvent } from '@/lib/events';
 import { MFA_VERIFY_PATH, getMfaStatus } from '@/lib/auth/mfa';
+import {
+  RECOVERY_COOKIE,
+  isRecoveryMarkerValid,
+} from '@/lib/auth/recovery-marker';
+import { endOtherSessions } from '@/lib/auth/sessions';
 import { createWorkspaceError, workspaceNameSchema } from '@/lib/auth/workspace-name';
 
 // Persist the "remember me" choice so token refreshes (in the proxy) keep the
@@ -89,6 +94,10 @@ export async function signInAction(
   redirect('/command');
 }
 
+const SIGN_UP_NOTICE =
+  'Check your email to finish signing up. If you already have an account, sign in or reset your password instead.';
+const ADDRESS_TAKEN_CODES = new Set(['user_already_exists', 'email_exists']);
+
 export async function signUpAction(
   _prev: AuthState,
   formData: FormData,
@@ -114,14 +123,15 @@ export async function signUpAction(
       email: parsed.data.email,
       password: parsed.data.password,
     });
-    if (signUpErr) {
-      return { error: 'Could not sign up. Try a different email.', values };
+    // A registered address gets the same answer as a new one that still has
+    // to confirm, so the form never says which addresses have an account.
+    // Which of the two the auth server reports depends on whether the project
+    // has email confirmation on.
+    if (signUpErr && !ADDRESS_TAKEN_CODES.has(signUpErr.code ?? '')) {
+      return { error: 'Could not sign up right now. Please try again.', values };
     }
-    if (!data.session) {
-      return {
-        notice: 'Check your email to confirm your account, then sign in.',
-        values,
-      };
+    if (signUpErr || !data.session) {
+      return { notice: SIGN_UP_NOTICE, values };
     }
   }
 
@@ -159,6 +169,7 @@ export async function demoSignInAction(): Promise<AuthState> {
 export async function signOutAction(): Promise<void> {
   const supabase = await createClient();
   await supabase.auth.signOut();
+  (await cookies()).delete(RECOVERY_COOKIE);
   redirect('/login');
 }
 
@@ -193,6 +204,9 @@ export async function requestPasswordResetAction(
   };
 }
 
+const RESET_LINK_REQUIRED =
+  'This page only works straight after opening a reset link. Request a new reset link and try again.';
+
 // Step 2 of recovery: the user arrives with a recovery session and sets a new password.
 export async function updatePasswordAction(
   _prev: AuthState,
@@ -212,12 +226,24 @@ export async function updatePasswordAction(
     return { error: 'Your reset link has expired. Request a new one.' };
   }
 
+  // Being signed in is not enough: only a session that came from the emailed
+  // recovery link may set a password without the current one. Everyone else
+  // uses the change-password form, which asks for it.
+  const store = await cookies();
+  if (!isRecoveryMarkerValid(store.get(RECOVERY_COOKIE)?.value, user.id)) {
+    return { error: RESET_LINK_REQUIRED };
+  }
+
   const { error } = await supabase.auth.updateUser({
     password: parsed.data.password,
   });
   if (error) {
     return { error: 'Could not update your password. Please try again.' };
   }
+  // One link, one new password.
+  store.delete(RECOVERY_COOKIE);
+  // Anyone still signed in with the old password is signed out.
+  await endOtherSessions(supabase);
   await recordEvent(supabase, {
     action: 'Reset password by email',
     category: 'security',
