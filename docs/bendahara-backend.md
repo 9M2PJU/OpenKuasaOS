@@ -699,7 +699,8 @@ amounts, to the sen, as a bank statement does. The table's count line is left
 out when no posted movement exists at all.
 
 `banking.ts` only reads. Accounts can be added, edited, archived and restored
-(see "Accounts" below); transfers and statements get their forms later. Every action that records,
+(see "Accounts" below), and a transfer recorded and voided (see "The transfer
+form"); statements get their forms later. Every action that records,
 pays, voids or deletes money refreshes `/finance/banking`; an action added
 later must do the same.
 
@@ -927,6 +928,71 @@ table revokes "from anon, authenticated, service_role".
 On `finance_statement_imports`, `created_by`, `id` and `created_at` are the
 database's to write since the same migration (`42501`): an import is recorded
 as made by the person signed in, and "Last import" cannot be moved.
+
+### The transfer form
+
+"Transfer" in Banking's header opens a form at the top of the page: From and
+To (two different active accounts, each shown with its balance; To leaves out
+the account chosen in From), an amount, a date (the person's own date when
+the form opens), a reference and notes. `transfers.ts` has one schema and one
+function per write: `recordTransfer` calls `finance_record_transfer` and then
+reads the `TR-` number back from one side (a transfer whose number could not
+be read back is still a success, without a number); `voidTransfer` calls
+`finance_void_transfer`. `transfer-form.ts` has the form's rules and every
+sentence the screen says. Nothing in the database changed for this: both
+functions are used as stage 6a left them.
+
+Recording and voiding are an owner's or admin's. The loader hands the two
+actions (`writer.transfers`) to nobody else, so a member sees no "Transfer"
+button and no menu in the Transactions table; the actions refuse a member
+before anything is read ("Only an owner or admin can record or void a transfer
+between accounts. Ask one of them to do this."), and the database answers
+`FIN14`. The button is also absent while the workspace has fewer than two
+active accounts.
+
+| | Owner, admin | Member | Viewer, demo |
+|---|---|---|---|
+| Header | New receipt, Transfer, Add account | New receipt, Add account | none |
+| Transactions table | a menu on each side of a transfer: Void transfer | no Actions column | no Actions column |
+| `recordTransferAction`, `voidTransferAction` | run | refused before anything is read | "You do not have permission to make changes here." |
+| `finance_record_transfer` | recorded | `FIN16` for what is wrong with it first, then `FIN14` | `42501` |
+| `finance_void_transfer` | voided | `FIN14` | `FIN11` (the rows are not theirs to see or lock) |
+
+`FIN16` is three messages under one code, so the schema refuses the two a
+form can cause first (the same account twice; an amount that is not above 0)
+and `FIN16` from the database is worded for what is left: "One of those
+accounts has been archived or no longer exists. Choose another, then try
+again." The archived-account rule on `finance_transactions` raises `FIN37` when
+an account is archived in the moment between `finance_record_transfer`'s own
+question (which answers `FIN16`) and the write, and `transfers.ts` gives it the
+same sentence as `FIN16`. `FIN09` is "This transfer has already been voided." and
+`FIN11` "That transfer no longer exists." Both leave the row, which the refresh
+after a refusal takes out of the table (it lists posted movements only), so a
+refused void is also said at the top of the page in a note titled "Transfer not
+voided", where it outlasts the question it was asked in.
+
+A transfer for more than the From account holds is taken; the form says what
+it leaves the account at before it is recorded ("Main Bank holds RM 300.00.
+This transfer leaves it overdrawn by RM 200.00."). A transfer is not edited:
+it is voided and recorded again. "Void transfer" is asked in the row of either
+side and says what it does, including that a statement line matched to either
+side goes back to unmatched; both sides then leave the table, which lists
+posted movements only, and a note says so. A voided transfer keeps its number.
+
+Both actions refresh `TRANSFER_PATHS`: Banking and the three ledger screens. In
+the books a posted transfer is one entry (debit the account it reached, credit
+the one it left) and a voided one is that entry and its reversal; Reports
+leaves transfers out of money in and money out, since nothing entered or left
+the business. A transfer is on no other screen.
+
+Banking keeps one thing open at a time: the account form, the transfer form,
+an archive question or a void question. The header's buttons wait while any of
+them is open or a void is under way, a menu choice replaces a question with
+what it opens, and a void question whose row has left the table (a search or
+filter hid it, or the refresh took it away) is closed for good: it does not
+come back when the filter is cleared. A void that finishes closes only its own
+question. Who is given the transfer actions is `bankingAccess` in
+`banking-access.ts`: an owner or admin, never the demo workspace.
 
 ## Receipts Inbox
 
@@ -1499,7 +1565,7 @@ quotation, a credit note or a refund by the file that made the call.
 | `FIN24` | The file of a receipt: there is none; it is not in the bucket; it was uploaded more than 30 minutes ago or is waiting to be removed; it is already a receipt; it is not the type its name says; its path names none of the five types. `receipt-inbox.ts` words it for recording an upload. |
 | `FIN25` | A void bill takes no receipt. Not worded yet. |
 | `FIN30` | An account with payments still to be paid or waiting for approval is not archived. `bank-accounts.ts`: "This account has payments that are still to be paid or waiting for approval. Pay, reject or delete them, then archive it." (`FIN14` on an account is an opening balance from someone who is not an owner or admin, or an owner who has not given their second factor: "Only an owner or admin can set or change an opening balance. If you are one, sign in again with your second step." The guard counts payments in both directions; the screen's archive question warns about money out only.) |
-| `FIN37` | Money does not move on an archived account: a payment is not started on one, moved onto one, or sent for approval, approved, scheduled, posted or marked paid while its account is archived. `result.ts` has the one sentence (`ACCOUNT_ARCHIVED`), which `money.ts`, `refunds.ts` and `cash-receipts.ts` each list in their own map. A member recording a payment in, a refund or a paid-now payment out on an archived account is answered `FIN37` (the draft is refused before the sign-off rule), where before this rule they were answered `FIN14`; posting, approving and marking paid by a member still answer `FIN14`. |
+| `FIN37` | Money does not move on an archived account: a payment is not started on one, moved onto one, or sent for approval, approved, scheduled, posted or marked paid while its account is archived. `result.ts` has the one sentence (`ACCOUNT_ARCHIVED`), which `money.ts`, `refunds.ts` and `cash-receipts.ts` each list in their own map; `transfers.ts` words it as it words `FIN16`. A member recording a payment in, a refund or a paid-now payment out on an archived account is answered `FIN37` (the draft is refused before the sign-off rule), where before this rule they were answered `FIN14`; posting, approving and marking paid by a member still answer `FIN14`. |
 
 `FIN23`, `FIN24` and `FIN25` are not the Receipts Inbox's alone. The ledger
 migrations (`20261108091500` to `20261108094500`) raise `FIN23` to `FIN27` with
@@ -1599,10 +1665,12 @@ nothing; a payment with both a contact and a typed name. `23503`: an expense
 that a voided or rejected payment still names cannot be deleted. For these cases none of
 the codes has a sentence yet: the files that word them arrive with the forms.
 
-Banking adds two codes, and neither has a sentence yet either. `FIN16` is a
+Banking adds two codes. `FIN16` is a
 transfer: it is between two different, active accounts of the workspace and
 has an amount; a payment does not join or leave a transfer; once a side is
-posted, a transfer is two matching sides. `FIN17` is a statement: an import
+posted, a transfer is two matching sides. `transfers.ts` words it for the one
+case its schema leaves ("One of those accounts has been archived or no longer
+exists. Choose another, then try again."). `FIN17` has no sentence yet; it is a statement: an import
 has between 1 and 1,000 lines; a line starts unmatched and only its match
 changes; it is matched to a posted payment of its account, direction and
 amount; a matched line is unmatched before it is deleted; an import stays
@@ -1984,13 +2052,18 @@ with no date).
 - The database tests for this stage, `tests/bendahara-cash-book.test.ts`, run
   against the hosted database as owners only. What an editor and a viewer may
   not do is proved by `supabase/tests/bendahara_cash_book_check.sql`.
-- Banking can add and change accounts, but money cannot be moved between
-  accounts and no statement can be imported until their forms are built; the
-  database functions are there and nothing calls them. A
-  transfer and a statement exist only in the demo workspace.
+- Banking can add and change accounts and move money between them, but no
+  statement can be imported until its form is built; the database function is
+  there and nothing calls it. A statement exists only in the demo workspace.
 - Only an owner or admin can record a transfer between accounts, and only an
   owner or admin can void one. Nothing waits for approval: anyone else is
-  refused (`FIN14`), and a member has no way to ask for either.
+  refused (`FIN14`), and a member has no way to ask for either and is shown
+  neither.
+- A voided transfer is on no screen but the ledger's: Banking's table lists
+  posted movements only. A transfer cannot be edited, and no other row of
+  that table has a menu or a link to the screen that recorded it.
+- A transfer's date is not restricted: a future date moves both balances at
+  once, as it does for any payment.
 - `finance_account_balances` has no account number. A writer reads account
   numbers with `finance_account_numbers(target_org)`; a viewer cannot read
   them at all. The Banking loader calls that function for a writer only.
