@@ -6,6 +6,7 @@ import {
   convertRfq,
   deleteRfq,
   getRfq,
+  getRfqGroup,
   listRfqs,
   quoteRfq,
   quoteRfqInput,
@@ -60,6 +61,14 @@ describe('saveRfqInput', () => {
     expect(first({ ...valid, lines: [{ ...line, quantity: 0.0004 }] })).toBe('Enter a quantity above 0.');
     expect(first({ ...valid, lines: [{ ...line, sst_rate: 100.005 }] })).toBe('Enter an SST rate between 0 and 100.');
   });
+  it('takes the RFQ a new draft was copied from only as an id, with or without the draft’s own', () => {
+    for (const source_rfq_id of ['nope', '', null, 7]) {
+      expect(first({ ...valid, source_rfq_id }), String(source_rfq_id)).toBe('That RFQ no longer exists.');
+    }
+    expect(saveRfqInput.parse({ ...valid, source_rfq_id: ID }).source_rfq_id).toBe(ID);
+    expect(saveRfqInput.parse({ ...valid, id: ID, source_rfq_id: ID }).source_rfq_id).toBe(ID);
+    expect(saveRfqInput.parse(valid)).not.toHaveProperty('source_rfq_id');
+  });
   it('has no place for a number, a status or a supplier reference: the database gives those', () => {
     const parsed = saveRfqInput.parse({ ...valid, notes: '  ', rfq_no: 'RFQ-9999', status: 'quoted', supplier_ref: 'X' });
     expect(Object.keys(parsed).sort()).toEqual(['lines', 'notes', 'reply_by', 'rfq_date', 'supplier_id']);
@@ -89,7 +98,7 @@ describe('RFQ reads', () => {
   const row = (n: number, extra: Record<string, unknown> = {}) => ({
     id: `rfq-${n}`, rfq_no: `RFQ-${n}`, supplier_id: 's1', supplier_name: 'Syarikat Kertas',
     rfq_date: '2026-10-01', reply_by: '2026-10-31', supplier_ref: null, status: 'quoted',
-    line_count: 2, total: '132.50', fully_priced: true, purchase_order_id: null, purchase_order_no: null, ...extra,
+    line_count: 2, total: '132.50', fully_priced: true, purchase_order_id: null, purchase_order_no: null, source_rfq_id: null, ...extra,
   });
   const read = (n: number, extra: Record<string, unknown> = {}) => ({ ...row(n), line_count: 2, total: 132.5, ...extra });
 
@@ -122,11 +131,11 @@ describe('RFQ reads', () => {
     ];
     const { ctx, calls } = fakeFinance((call) =>
       call.name === 'finance_rfq_totals'
-        ? { data: { ...row(1), subtotal: '125.00', sst_total: '7.50', notes: 'Urgent' }, error: null }
+        ? { data: { ...row(1), subtotal: '125.00', sst_total: '7.50', notes: 'Urgent', quoted_at: '2026-10-02T09:00:00+00:00' }, error: null }
         : { data: lines, error: null },
     );
     expect(await getRfq(ctx, ID)).toEqual({
-      ...read(1), subtotal: 125, sst_total: 7.5, notes: 'Urgent',
+      ...read(1), subtotal: 125, sst_total: 7.5, notes: 'Urgent', quoted_at: '2026-10-02T09:00:00+00:00',
       lines: [
         { ...lines[0], quantity: 10, unit_price: 12.5, sst_rate: 6 },
         { ...lines[1], quantity: 1, unit_price: null, sst_rate: 0 },
@@ -141,6 +150,27 @@ describe('RFQ reads', () => {
     const bad = fakeFinance({ data: null, error: null });
     expect(await getRfq(bad.ctx, 'nope')).toBeNull();
     expect(bad.calls).toEqual([]);
+  });
+  it('reads a group from its first RFQ: that RFQ and every copy that names it, drafts left out, in the order made', async () => {
+    const FIRST = '55555555-5555-4555-8555-555555555555';
+    const { ctx, calls } = fakeFinance((call) => {
+      if (call.name === 'finance_rfq_lines') return { data: [], error: null };
+      // The group's ids; then each RFQ by its own id, the clicked copy first.
+      if (call.columns === 'id') return { data: [{ id: FIRST }, { id: ID }], error: null };
+      return { data: row(1, { id: call.filters.id, source_rfq_id: call.filters.id === ID ? FIRST : null }), error: null };
+    });
+    const group = await getRfqGroup(ctx, ID);
+    expect(group.map((r) => r.id)).toEqual([FIRST, ID]);
+    expect(calls[2]).toMatchObject({
+      name: 'finance_rfq_totals',
+      filters: { org_id: 'org-1', or: `id.eq.${FIRST},source_rfq_id.eq.${FIRST}`, 'status neq': 'draft' },
+      order: ['created_at asc', 'id asc'],
+    });
+  });
+  it('reads no group for an RFQ that is not there', async () => {
+    const { ctx, calls } = fakeFinance({ data: null, error: null });
+    expect(await getRfqGroup(ctx, ID)).toEqual([]);
+    expect(calls).toHaveLength(1);
   });
 });
 
@@ -200,6 +230,29 @@ describe('RFQ writes', () => {
       expect(await deleteRfq(ctx, { id: ID }), code).toEqual({ ok: false, error: message });
     }
     expect(logged).not.toHaveBeenCalled();
+  });
+  it('says the RFQ it was copied from is gone when a new copy is refused with FIN11, and nothing else', async () => {
+    const sentence = 'The RFQ this was copied from can no longer be found. Save again to keep this one on its own.';
+    const copy = { ...valid, source_rfq_id: ID };
+    const refused = () => fakeFinance({ data: null, error: { code: 'FIN11' } }).ctx;
+    expect(await saveRfq(refused(), copy)).toEqual({ ok: false, error: sentence });
+    expect(RFQ_MESSAGES.copiedFromGone).toBe(sentence);
+    // A draft being changed that is gone is that RFQ, whatever link is sent with it; so is a new RFQ with no link.
+    const OTHER = '55555555-5555-4555-8555-555555555555';
+    expect(await saveRfq(refused(), { ...copy, id: OTHER })).toEqual({ ok: false, error: 'That RFQ no longer exists.' });
+    expect(await saveRfq(refused(), { ...valid, id: OTHER })).toEqual({ ok: false, error: 'That RFQ no longer exists.' });
+    expect(await saveRfq(refused(), valid)).toEqual({ ok: false, error: 'That RFQ no longer exists.' });
+    // Any other refusal of a new copy keeps its own sentence.
+    for (const [code, message] of [['23503', RFQ_MESSAGES.missing], ['42501', 'You do not have permission to make changes here.']]) {
+      const { ctx } = fakeFinance({ data: null, error: { code } });
+      expect(await saveRfq(ctx, copy), code).toEqual({ ok: false, error: message });
+    }
+    expect(logged).not.toHaveBeenCalled();
+  });
+  it('saves a copy again without its link once the form has let go of it', async () => {
+    const { ctx, calls } = fakeFinance({ data: ID, error: null });
+    expect(await saveRfq(ctx, valid)).toEqual({ ok: true, data: { id: ID } });
+    expect((calls[0].args as { rfq: object }).rfq).not.toHaveProperty('source_rfq_id');
   });
   it('says the RFQ is gone when a delete touches no row', async () => {
     const { ctx } = fakeFinance({ data: null, error: null });

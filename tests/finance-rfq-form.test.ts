@@ -8,6 +8,7 @@ import {
   priceDrafts,
   quoteFormError,
   quotePayload,
+  rfqFormAfterRefusal,
   rfqFormCopiedFrom,
   rfqFormError,
   rfqFormFromDetail,
@@ -15,7 +16,7 @@ import {
   rfqSavedNotSent,
   withRfqProduct,
 } from '@/lib/finance/rfq-form';
-import { type RfqDetail, quoteRfqInput, saveRfqInput } from '@/lib/finance/rfqs';
+import { RFQ_MESSAGES, type RfqDetail, quoteRfqInput, saveRfqInput } from '@/lib/finance/rfqs';
 import { WRITE_FAILED } from '@/lib/finance/result';
 
 const SUPPLIER = '44444444-4444-4444-8444-444444444444';
@@ -52,8 +53,8 @@ describe('a saved draft, as the form shows it', () => {
   it('shows a missing price as an empty box and a price of 0 as 0', () => {
     const detail: RfqDetail = {
       id: RFQ, rfq_no: null, supplier_id: SUPPLIER, supplier_name: 'Syarikat Kertas', rfq_date: '2026-10-01', reply_by: null,
-      supplier_ref: null, status: 'draft', line_count: 2, total: 0, fully_priced: false, purchase_order_id: null, purchase_order_no: null,
-      subtotal: 0, sst_total: 0, notes: null,
+      supplier_ref: null, status: 'draft', line_count: 2, total: 0, fully_priced: false, purchase_order_id: null, purchase_order_no: null, source_rfq_id: null,
+      subtotal: 0, sst_total: 0, notes: null, quoted_at: null,
       lines: [
         { id: LINE_1, product_id: PRODUCT, description: 'Printer paper', quantity: 5, uom: 'ream', pack_size: 'box of 5', unit_price: null, sst_rate: 6 },
         { id: LINE_2, product_id: null, description: 'Sample', quantity: 1, uom: null, pack_size: null, unit_price: 0, sst_rate: 0 },
@@ -72,8 +73,8 @@ describe('a saved draft, as the form shows it', () => {
 describe('a copy of an RFQ, for another supplier', () => {
   const priced: RfqDetail = {
     id: RFQ, rfq_no: 'RFQ-0004', supplier_id: SUPPLIER, supplier_name: 'Syarikat Kertas', rfq_date: '2026-09-01', reply_by: '2026-09-15',
-    supplier_ref: 'Q-77', status: 'quoted', line_count: 2, total: 130, fully_priced: true, purchase_order_id: 'po-1', purchase_order_no: 'PO-0003',
-    subtotal: 125, sst_total: 5, notes: 'Deliver to the back door',
+    supplier_ref: 'Q-77', status: 'quoted', line_count: 2, total: 130, fully_priced: true, purchase_order_id: 'po-1', purchase_order_no: 'PO-0003', source_rfq_id: null,
+    subtotal: 125, sst_total: 5, notes: 'Deliver to the back door', quoted_at: '2026-10-02T09:00:00Z',
     lines: [
       { id: LINE_1, product_id: PRODUCT, description: 'Printer paper', quantity: 5, uom: 'ream', pack_size: 'box of 5', unit_price: 24.9, sst_rate: 6 },
       { id: LINE_2, product_id: null, description: 'Sample', quantity: 1, uom: null, pack_size: null, unit_price: 0, sst_rate: 0 },
@@ -106,10 +107,33 @@ describe('a copy of an RFQ, for another supplier', () => {
     expect(rfqFormError(chosen)).toBeNull();
     expect(rfqPayload(chosen)).not.toHaveProperty('id');
   });
+  it('remembers the RFQ it was copied from, and sends it with the new draft', () => {
+    const chosen = RFQ_FORM_KIND.withParty(rfqFormCopiedFrom(priced, today), { id: SUPPLIER, payment_terms_days: 30 });
+    expect(rfqPayload(chosen)).toMatchObject({ source_rfq_id: priced.id });
+    expect(saveRfqInput.parse(rfqPayload(chosen)).source_rfq_id).toBe(priced.id);
+    expect(rfqPayload(filled())).not.toHaveProperty('source_rfq_id');
+  });
   it('leaves the RFQ it was copied from unchanged', () => {
     const before = JSON.stringify(priced);
     rfqFormCopiedFrom(priced, today);
     expect(JSON.stringify(priced)).toBe(before);
+  });
+  it('lets go of the RFQ it was copied from once that RFQ is gone, so saving again is not refused the same way', () => {
+    const chosen = RFQ_FORM_KIND.withParty(rfqFormCopiedFrom(priced, today), { id: SUPPLIER, payment_terms_days: 30 });
+    const after = rfqFormAfterRefusal(chosen, RFQ_MESSAGES.copiedFromGone);
+    expect(after).not.toHaveProperty('source_rfq_id');
+    expect(rfqPayload(after)).not.toHaveProperty('source_rfq_id');
+    // Everything the person typed is still there, and it is still a new RFQ.
+    expect(after).toEqual({ ...chosen, source_rfq_id: undefined });
+    expect(rfqFormError(after)).toBeNull();
+    expect(rfqPayload(after)).not.toHaveProperty('id');
+    expect(chosen.source_rfq_id).toBe(priced.id);
+  });
+  it('keeps the RFQ it was copied from through any other refusal', () => {
+    const chosen = RFQ_FORM_KIND.withParty(rfqFormCopiedFrom(priced, today), { id: SUPPLIER, payment_terms_days: 30 });
+    for (const error of [RFQ_MESSAGES.gone, RFQ_MESSAGES.missing, RFQ_MESSAGES.locked, WRITE_FAILED, '']) {
+      expect(rfqFormAfterRefusal(chosen, error), error).toBe(chosen);
+    }
   });
 });
 
@@ -191,6 +215,7 @@ describe('the RFQ form, as the shared card draws it', () => {
     expect(RFQ_FORM_KIND.error).toBe(rfqFormError);
     expect(RFQ_FORM_KIND.payload).toBe(rfqPayload);
     expect(RFQ_FORM_KIND.savedNotPosted).toBe(rfqSavedNotSent);
+    expect(RFQ_FORM_KIND.afterRefusal).toBe(rfqFormAfterRefusal);
   });
   it('is marked as sent, never posted, in every word the card shows', () => {
     const words = documentFormWords(RFQ_FORM_KIND);

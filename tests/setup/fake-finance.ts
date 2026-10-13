@@ -75,6 +75,11 @@ export function fakeFinance(answer: FinanceAnswer | ((call: FinanceCall) => Fina
           call.filters[`${column} in`] = values;
           return builder;
         },
+        // Recorded under "or", in PostgREST's own words.
+        or(filter: string) {
+          call.filters.or = filter;
+          return builder;
+        },
         order(column: string, options?: { ascending?: boolean }) {
           call.order.push(`${column} ${options?.ascending === false ? 'desc' : 'asc'}`);
           return builder;
