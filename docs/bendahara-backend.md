@@ -42,7 +42,7 @@ the data layer, with unit tests; the client components only draw them.
 | `expenses.ts` | Expenses: reading them (`listExpenses`, from the view `finance_expense_totals`, a page at a time; `listExpenseCategories`), the row type, the three statuses a person sets and `paid`, which is only how an expense reads; and the writes of the Expenses screen: `saveExpenseInput`, `saveExpense` (`finance_save_expense`, then a read of the status the database left), `approveExpense` and `rejectExpense` (one update of `status`), `deleteExpense`, and `EXPENSE_MESSAGES` |
 | `expense-form.ts` | The Expenses screen's rules, pure: the form (`newExpenseForm`, `editExpenseForm`, `expensePayload`, `expenseFormError`, `expenseSaveHint`), what a row's menu offers each person (`expenseActions`), what is left of an expense (`expenseLeft`), how a part-paid expense reads (`isPartPaid`, `expensePaymentNote`), and the note for an expense just written that is not in the list |
 | `expense-payment.ts` | Marking an approved expense paid: `markExpensePaidInput`, `markExpensePaid` (a read of the expense as it was shown, then `finance_record_voucher` with status `posted` and one allocation, then a read of the voucher's number), `EXPENSE_PAYMENT_MESSAGES`, and the Mark paid card's rules, pure (`newExpensePayForm`, `expensePayPayload`, `expensePayError`, `expensePayHint`, the words of the note afterwards) |
-| `cash-book-views.ts` | KPI figures, chart data, table filters, status words and CSV rows for Cash Receipts, Payment Vouchers and Expenses; the period selector of the first two (`inPeriod`), which sets the cards, the donut and the table rows alike (`cashReceiptsInPeriod`, `paymentVouchersInPeriod`: a draft receipt, and a voucher waiting for approval or still to be paid, stay in every period because their cards count them whatever their date; search, filters, "View all" and Export work on top of it); which category a voucher counts under (`voucherCategory`) and which screen changes it (`voucherHome`); what a receipt's row menu offers, by its status and by whether the person may sign off (`cashReceiptActions`), and the words of its questions (`receiptName`, `receiptVoidEffect`, `receiptDeleteEffect`) |
+| `cash-book-views.ts` | KPI figures, chart data, table filters, status words and CSV rows for Cash Receipts, Payment Vouchers and Expenses; the period selector of the first two (`inPeriod`), which sets the cards, the donut and the table rows alike (`cashReceiptsInPeriod`, `paymentVouchersInPeriod`: a draft receipt, a draft voucher, and a voucher waiting for approval or still to be paid, stay in every period (their cards count a draft receipt and what is waiting whatever the date; no card counts a draft voucher, which is kept so that what it holds of a bill can be found); search, filters, "View all" and Export work on top of it); which category a voucher counts under (`voucherCategory`) and which screen changes it (`voucherHome`); what a receipt's row menu offers, by its status and by whether the person may sign off (`cashReceiptActions`), and the words of its questions (`receiptName`, `receiptVoidEffect`, `receiptDeleteEffect`) |
 | `receipts.ts` | Reading the Receipts Inbox (`listInboxReceipts`, from the view `finance_receipt_inbox`), a page at a time, with the row type and the bucket's name, size limit and five file types. An inbox receipt is an uploaded photo or PDF, not a cash receipt: everything exported says `Inbox`. It never reads `file_path`: only `getReceiptFile` in `receipt-inbox.ts` does, on the server |
 | `receipt-views.ts` | The three counts, the donut, the status and type words, the "Matched to" words (`inboxDocument`), whether a row says anything about AI reading and what (`inboxReadingNote`, `INBOX_READING_NOTES`), the filter and the CSV rows of the Receipts Inbox |
 | `receipt-files.ts` | What is decided about a file before it is uploaded: its type from its first bytes (`sniffReceiptType`), the path it is stored at, the name kept to show (`cleanFileName`), what a refused upload means, and the upload queue's states |
@@ -396,10 +396,10 @@ account, the date, the method, a reference and notes. It calls
 person's choosing. The database decides by who is recording: an owner's or
 admin's voucher is approved in the same call and reads "To be paid"; anyone
 else's waits as "Pending approval". The status is read back and the screen says
-which it was. There is no draft: the function leaves none, and a voucher that
-waits cannot be edited (the guard refuses any change of one, `FIN14`), so a
-mistake is deleted and recorded again. Nothing is paid here yet: "Paid now",
-Mark as paid and Void are part 5d-2.
+which it was. A voucher that waits cannot be edited (the guard refuses any
+change of one, `FIN14`), so a mistake in one is deleted and recorded again; one
+saved as a draft first can be (next section). Nothing is paid here yet: "Paid
+now", Mark as paid and Void are part 5d-2.
 
 **Approve** and **Reject** are offered to an owner or admin on every voucher
 that is waiting, whatever it pays. Each is one update of `status`
@@ -425,11 +425,11 @@ At **Approve**, a voucher that pays supplier bills shows the same advice
 Payments Out shows before a payment is marked paid: `OrderNotes` with the
 sentences of `orderNotesForBills`, for each purchase order behind its bills
 that is billed for more than its total or for more than has been received
-(`orderNotesByVoucher`). The bills and purchase orders are read only for
-someone who may approve, and only while such a voucher is waiting. No screen
-can send a supplier payment for approval yet (Payments Out schedules or pays
-it; `finance_record_voucher` takes no bills), so today this shows only for a
-voucher made by a direct call; part 5d-3 would add the form for it.
+(`orderNotesByVoucher`). That advice is worked out only for someone who may
+approve, and only while such a voucher is waiting (`voucherAccess`); the bills
+and purchase orders themselves are read for anyone who may write, because the
+form offers them. Such a voucher is made on this screen: "New voucher" for a
+supplier's bills, sent for approval (next section).
 
 **Delete** is offered, to anyone who may write and whoever recorded the
 voucher, on any voucher that is a draft, waiting or rejected, and on one that
@@ -457,6 +457,74 @@ What each role is answered by the database, and what the screen offers:
 | Approve, Reject on a waiting voucher | Yes | Not offered. The actions answer "Only an owner or admin can approve or reject a voucher. Ask one of them to do this." before anything is read | No menu |
 | Delete on a draft, waiting or rejected voucher of any kind, and on a "To be paid" one of kind `expense` or `other` | Yes | Yes | No menu |
 | A supplier payment or a refund that is "To be paid" or paid | A link to Payments Out or Refunds | The link | The link |
+
+### A saved draft, and a voucher for a supplier's bills
+
+Migration `20261117100000_bendahara_save_voucher.sql` adds one function and
+nothing else: `finance_save_voucher(target_org, voucher, allocations)`. It
+creates a draft voucher, or replaces the details and split of one that is
+still a draft (`voucher.id`), and with `voucher.status = 'pending_approval'`
+sends it for approval in the same call. A voucher is for one supplier's posted
+bills (`allocations: [{bill_id, amount}]`; its amount is the sum of its split,
+each part rounded to the sen, and its payee is the bills' supplier whatever
+was sent) or for an expense category (an amount and a payee of its own). It
+never schedules and never pays (`22023` if asked), takes no expenses (`FIN06`;
+`finance_record_voucher` records those), and refuses an amount that is `NaN`
+by name (`23514`). It runs as the caller, like `finance_save_cash_receipt`: it
+writes no closed column, so the row policies decide who may write and every
+guard runs on every row. It takes no error code of its own. Check script:
+`supabase/tests/bendahara_save_voucher_check.sql`.
+
+On the screen, "New voucher" asks what it is for. For an expense category the
+first button is as before (an owner's or admin's save is approved at once; a
+member's waits) and "Save as draft" is beside it. For a supplier's bills the
+person chooses the supplier and ticks the bills (`voucherPayableBills`: what is
+owed on each less what payments, drafts and waiting vouchers already hold),
+sees under them the same over-billing advice the Payments Out form shows
+(`OrderNotes`, `orderNotesForBills`), and has "Send for approval" and "Save as
+draft", whoever they are. **Approval of a supplier payment is a choice**:
+Payments Out still schedules one without it, and the form says so. This screen
+never schedules a supplier payment, so the two screens do not offer the same
+thing. An owner or admin who sends a voucher for approval may approve it
+themselves.
+
+A draft of kind Supplier payment or Other payment has **Edit** (the form, with
+its bills ticked for what it holds), **Send for approval** and **Delete** in
+its row, for anyone who may write, whoever saved it. Send is one update of
+`status` to `pending_approval`, matched on the row as shown like a decision
+("This draft is not as it was shown to you, so it was not sent. Check it
+again."), and its question carries the same line of what the table does not
+draw; the bills behind a draft are not part of that match, which is why
+approval is matched again on a voucher that can no longer change. A draft is
+always sent for approval, also by an owner or admin. A draft holds its part
+of each bill (`FIN05` counts it), and so does a voucher that waits; a rejected
+one holds nothing.
+
+Once a voucher waits, its fields (`FIN14`) and its split (`FIN09` from the
+guard on allocations) cannot be changed by anyone, so what an approver's row
+and question showed is what is approved. Approved, a voucher for bills is a
+payment "To be paid" on Payments Out (`voucherHome`), where it is marked paid,
+voided or deleted; the Kind cell links there at every status and says "Managed
+on Payments Out" from then on and not before (`voucherKindLink`).
+
+A draft stays in the table in every period, as a draft receipt does
+(`paymentVouchersInPeriod`): it holds its part of a bill until it is sent or
+deleted, so it must be findable however old its date. No card or chart counts a
+draft, and the line under the table counts one dated outside the period among
+the rows it kept ("2 earlier ones still waiting or in draft").
+
+The actions are `saveVoucherAction` and `submitVoucherAction`; neither needs a
+sign-off, and both refresh the screens every voucher action refreshes
+(`VOUCHER_PATHS`).
+
+| Write | Owner, admin | Member | Viewer | Outsider |
+|---|---|---|---|---|
+| `finance_save_voucher`, a draft for bills or for a category | saved | saved | `42501` | `FIN06` (bills) or `FIN15` (category) |
+| The same, sent for approval in the call | waits, approved by nobody | waits | `42501` | `FIN06` or `FIN15` |
+| Edit a draft, whoever saved it | saved | saved | `FIN11` | `FIN06` or `FIN15` |
+| Edit a voucher that is no longer a draft | `FIN09` | `FIN09` | `FIN11` | `FIN06` or `FIN15` |
+| Send a draft for approval by its row | done | done | no row changed | no row changed |
+| Change a waiting voucher's split | `FIN09` | `FIN09` | no row changed | no row changed |
 
 ## Expenses
 
@@ -1875,9 +1943,23 @@ with no date).
 - Payment Vouchers: a voucher that waits or is "To be paid" can be deleted by
   any writer, whoever recorded or approved it: the guard on payments refuses a
   delete only once the payment is paid or void. An approved voucher cannot be
-  marked paid on Payment Vouchers yet (part 5d-2). No screen sends a payment to
-  a supplier for approval, so the over-billing note at Approve shows only for
-  one made by a direct call.
+  marked paid on Payment Vouchers yet (part 5d-2).
+- Payment Vouchers: approval of a supplier payment is a choice. A member can
+  still schedule one on Payments Out with no approval, so the Approve step is
+  a second look for those who ask for one, not a control on those who do not.
+- Payment Vouchers: through the app a voucher for bills is always paid to the
+  bills' supplier for exactly its split (`finance_save_voucher` sets both). By
+  a direct update a writer can re-point a draft's payee, or raise its amount
+  above its split, while it is still a draft (a draft is freely editable; the
+  hold of `FIN28` begins when a payment leaves draft), and no rule looks again
+  when it is sent or approved. The approver's question shows the payee, the
+  amount and the bills' numbers as they then are.
+- Payment Vouchers: sending a draft from its row is matched on the row's
+  fields, not on its bills: a draft's split can be changed by any writer until
+  it is sent. From then on nothing of it can change (`FIN09` for its split,
+  `FIN14` or `FIN28` for its fields).
+- Payment Vouchers: an owner's or admin's draft is not approved by saving it;
+  it is sent for approval and approved from its row, in two steps.
 - **A payment that is to be paid is held still as a row, not as an intention**
   (`20261117090000`). Anyone who may write can still delete a payment that
   is to be paid and record another in its place, for another amount or on

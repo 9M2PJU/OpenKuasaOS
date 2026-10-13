@@ -98,18 +98,22 @@ const voucher = (over: Partial<PaymentVoucherRow> = {}): PaymentVoucherRow => ({
 const record = vi.fn(async () => ({ ok: false as const, error: 'no' }));
 const approve = vi.fn(async () => ({ ok: true as const, data: { id: ID } }));
 const reject = vi.fn(async () => ({ ok: true as const, data: { id: ID } }));
+const submit = vi.fn(async () => ({ ok: true as const, data: { id: ID } }));
 const remove = vi.fn(async () => ({ ok: true as const, data: { id: ID } }));
 const never = async () => ({ ok: false as const, error: 'no' });
 const writer = (canDecide: boolean, orderNotes: Record<string, string[]> = {}): VouchersWriter => ({
-  actions: { record: never, approve, reject, remove },
+  actions: { record: never, save: never, submit, approve, reject, remove },
   canDecide,
   accounts: [],
   contacts: [],
   categories: [],
+  bills: [],
+  payments: [],
+  orders: [],
   orderNotes,
 });
 
-const render = (w?: VouchersWriter, rows: PaymentVoucherRow[] = SAMPLE_PAYMENT_VOUCHERS, initialAsk?: { kind: 'approve' | 'reject' | 'delete'; id: string }) =>
+const render = (w?: VouchersWriter, rows: PaymentVoucherRow[] = SAMPLE_PAYMENT_VOUCHERS, initialAsk?: { kind: 'edit' | 'submit' | 'approve' | 'reject' | 'delete'; id: string }) =>
   renderToStaticMarkup(<PaymentVouchersView rows={rows} today={SAMPLE_TODAY} followClock={false} writer={w} initialAsk={initialAsk} />);
 
 /** How many row menus the markup holds. */
@@ -161,6 +165,18 @@ describe('a waiting voucher\'s menu', () => {
   });
 });
 
+describe('a draft\'s menu', () => {
+  const rows = [voucher({ status: 'draft' })];
+
+  it('offers an owner and a member Edit, Send for approval and Delete', () => {
+    expect(items(render(writer(true), rows))).toEqual(['Edit', 'Send for approval', 'Delete']);
+    expect(items(render(writer(false), rows))).toEqual(['Edit', 'Send for approval', 'Delete']);
+  });
+  it('offers a viewer nothing', () => {
+    expect(items(render(undefined, rows))).toEqual([]);
+  });
+});
+
 describe('the Kind link', () => {
   it('says "Managed on Payments Out" only once the supplier payment is to be paid', () => {
     expect(render(writer(true), [voucher({ status: 'scheduled', approved_at: '2026-10-06T00:00:00Z' })])).toContain('title="Managed on Payments Out"');
@@ -200,6 +216,21 @@ describe('the questions', () => {
     expect(text(render(writer(true), rows, { kind: 'delete', id: ID }))).not.toContain('Reference: ACC 1');
   });
 
+  it('shows the same line under the Send question of a draft, and no over-billing note', () => {
+    const html = render(writer(false, notes), [voucher({ status: 'draft' })], { kind: 'submit', id: ID });
+    expect(text(html)).toContain('Method: FPX · Reference: ACC 1 · Notes: Paid late once already');
+    expect(html).not.toContain('role="status"');
+  });
+
+  it('presses Send for approval with the draft as it was shown', () => {
+    const draft = voucher({ status: 'draft' });
+    render(writer(false), [draft], { kind: 'submit', id: ID });
+    expect(asked[0].confirmLabel).toBe('Send for approval');
+    asked[0].onConfirm();
+    expect(submit).toHaveBeenCalledWith(voucherDecisionPayload(draft));
+    expect(approve).not.toHaveBeenCalled();
+  });
+
   it('presses Approve with the voucher as it was shown', () => {
     render(writer(true), rows, { kind: 'approve', id: ID });
     asked[0].onConfirm();
@@ -227,11 +258,60 @@ describe('the questions', () => {
   });
 });
 
+describe('Edit on a draft', () => {
+  const BILL = 'b1111111-1111-4111-8111-111111111111';
+  const MAJU = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  const draft = voucher({ status: 'draft', contact_id: MAJU, amount: 100, reference: 'ACC 1', notes: 'Paid late once already', documents: 'BILL-0007' });
+  const bill = {
+    id: BILL, bill_no: 'BILL-0007', supplier_id: MAJU, supplier_name: 'Syarikat Maju', bill_date: '2026-10-01', due_date: '2026-10-31', total: 132.5, paid: 0,
+    balance: 132.5, display_status: 'pending' as const, purchase_order_id: null, purchase_order_no: null, category_id: null, category_name: null,
+  };
+  // The draft holds RM 100.00 of the bill; someone else's waiting voucher holds RM 10.00 of it.
+  const held = (transaction: string, amount: number, status: 'draft' | 'pending_approval') => ({
+    allocation_id: `${transaction}-a`, transaction_id: transaction, number: null, txn_date: '2026-10-05', method: 'fpx' as const, amount, transaction_amount: amount, status,
+    reference: null, account_id: ACCOUNT, account_name: 'Maybank Current', bill_id: BILL, bill_no: 'BILL-0007', supplier_name: 'Syarikat Maju',
+  });
+  const editor = (): VouchersWriter => ({
+    ...writer(false),
+    accounts: [{ id: ACCOUNT, name: 'Maybank Current', kind: 'bank', bank_name: 'Maybank' }],
+    bills: [bill],
+    payments: [held(ID, 100, 'draft'), held('other', 10, 'pending_approval')],
+  });
+  const html = () => render(editor(), [draft], { kind: 'edit', id: ID });
+
+  it('opens the form on the draft, filled with what it holds, and no question', () => {
+    const markup = html();
+    expect(markup).toContain('Edit draft voucher');
+    expect(markup).toContain('value="ACC 1"');
+    expect(markup).toContain('value="Paid late once already"');
+    expect(markup).toContain('aria-label="Amount to pay on BILL-0007" value="100.00"');
+    expect(markup).toContain('Save draft');
+    expect(markup).not.toContain('New voucher</h3>');
+    expect(asked).toHaveLength(0);
+    expect(text(markup)).not.toContain('Delete voucher');
+  });
+  it('gives the draft its own part of the bill back: the bill can take RM 122.50, not the RM 22.50 left beside it', () => {
+    const words = text(html());
+    expect(words).toContain('RM 122.50 to pay');
+    expect(words).not.toContain('RM 22.50 to pay');
+  });
+});
+
 describe('the voucher form card', () => {
   const card = (canDecide: boolean) =>
     text(
       renderToStaticMarkup(
-        <VoucherFormCard accounts={[]} contacts={[]} categories={[]} today="2026-10-12" canDecide={canDecide} actions={{ record }} onClose={() => {}} />,
+        <VoucherFormCard
+          accounts={[]}
+          contacts={[]}
+          categories={[]}
+          payable={[]}
+          orders={[]}
+          today="2026-10-12"
+          canDecide={canDecide}
+          actions={{ record, save: record }}
+          onClose={() => {}}
+        />,
       ),
     );
 
@@ -239,10 +319,12 @@ describe('the voucher form card', () => {
     const html = card(true);
     expect(html).toContain('A voucher you save is approved at once and reads To be paid: you are an owner or admin. Nothing is paid until it is marked paid.');
     expect(html).toContain('Save voucher');
+    expect(html).toContain('Save as draft');
   });
   it('says what it does for a member, and names the button', () => {
     const html = card(false);
     expect(html).toContain('This voucher waits as Pending approval until an owner or admin approves or rejects it. Until then it cannot be changed, only deleted.');
     expect(html).toContain('Send for approval');
+    expect(html).toContain('Save as draft');
   });
 });
