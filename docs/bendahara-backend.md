@@ -1162,8 +1162,10 @@ question (which answers `FIN16`) and the write, and `transfers.ts` gives it the
 same sentence as `FIN16`. `FIN09` is "This transfer has already been voided." and
 `FIN11` "That transfer no longer exists." Both leave the row, which the refresh
 after a refusal takes out of the table (it lists posted movements only), so a
-refused void is also said at the top of the page in a note titled "Transfer not
-voided", where it outlasts the question it was asked in.
+refused void is said at the top of the page in a note titled "Transfer not
+voided", and its question closes, as the refusal arrives (`voidQuestionGone`).
+The sentence is not kept in the row: a search or a filter that hid the row
+later would raise the note under the control being used.
 
 A transfer for more than the From account holds is taken; the form says what
 it leaves the account at before it is recorded ("Main Bank holds RM 300.00.
@@ -1958,6 +1960,9 @@ with no date).
   fields, not on its bills: a draft's split can be changed by any writer until
   it is sent. From then on nothing of it can change (`FIN09` for its split,
   `FIN14` or `FIN28` for its fields).
+- Payment Vouchers: saving a draft that someone else changed meanwhile
+  replaces their change, with no warning, as saving a draft receipt does on
+  Cash Receipts: the form is not compared with the draft as it now is.
 - Payment Vouchers: an owner's or admin's draft is not approved by saving it;
   it is sent for approval and approved from its row, in two steps.
 - **A payment that is to be paid is held still as a row, not as an intention**
@@ -2123,7 +2128,11 @@ with no date).
   too ("Receipt RC-0012 was posted. Clear the search or choose View all to see
   it."). The note is worked out each time the screen draws, from the rows
   listed then, so changing the period, the filter or the search updates or
-  removes it; Close and the next action remove it too.
+  removes it; Close and the next action remove it too. A receipt that was
+  listed when it was posted or voided gets no note later: the first change of
+  the period, the filter, the search or "View all" forgets it, so a note
+  never turns up by itself under the control being used (Payment Vouchers and
+  Expenses do the same).
 - Categories cannot be added, renamed or archived from the app yet: every
   workspace has the ten it started with until the Categories card on Expenses
   is built. The database is ready for it: only an owner or admin may change
