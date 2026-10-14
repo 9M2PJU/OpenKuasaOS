@@ -14,6 +14,10 @@ const nextConfig: NextConfig = {
     // to `dynamic` seconds old until the next full load. `static` covers prefetched pages
     // and loading.tsx boundaries.
     staleTimes: { dynamic: 30, static: 180 },
+    // Rewrite barrel imports to per-module imports so they tree-shake. radix-ui
+    // is one big re-export barrel imported across the app; lucide-react and
+    // recharts are already optimized by Next's defaults.
+    optimizePackageImports: ["radix-ui", "zod", "ai", "@ai-sdk/react", "@animateicons/react"],
   },
   // The fixed security headers, on every path. The full Content-Security-Policy carries a per-request nonce,
   // so src/proxy.ts sets it.
