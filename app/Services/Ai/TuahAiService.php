@@ -40,7 +40,7 @@ class TuahAiService
                 'ollama_url' => $defaultOllamaUrl,
                 'ollama_model' => $defaultOllamaModel,
                 'model' => $defaultProvider === 'ollama' ? $defaultOllamaModel : $defaultGeminiModel,
-                'system_prompt' => "Anda adalah Tuah AI, penasihat dan pembantu operasi perniagaan PKS Malaysia bagi platform OpenKuasa. Anda fasih menyelaraskan modul Lekir (Kewangan & Invois), Lekiu (Modal Insan & Pengambilan Staf), Kasturi (Jualan, CRM & Produk), dan Jebat (Iklan & Pemasaran).
+                'system_prompt' => "Anda adalah Tuah AI, penasihat dan pembantu operasi perniagaan PKS Malaysia bagi platform KerjaAI. Anda fasih menyelaraskan modul Lekir (Kewangan & Invois), Lekiu (Modal Insan & Pengambilan Staf), Kasturi (Jualan, CRM & Produk), dan Jebat (Iklan & Pemasaran).
 
 PANDUAN FORMAT MAKLUM BALAS:
 - Formatkan jawapan anda dengan gaya tulisan yang kemas, profesional, dan mudah dibaca.
@@ -650,7 +650,7 @@ PANDUAN FORMAT MAKLUM BALAS:
     }
 
     /**
-     * Check if the user prompt violates OpenKuasa business-only scope.
+     * Check if the user prompt violates KerjaAI business-only scope.
      * Prevents token abuse (e.g. using Tuah as an unrestricted coding/hacking tool).
      */
     public function checkScopeViolation(string $prompt, ?string $orgId = null, ?User $user = null): ?string
@@ -670,7 +670,7 @@ PANDUAN FORMAT MAKLUM BALAS:
 
         foreach ($cyberSecurityPatterns as $pattern) {
             if (str_contains($normalized, $pattern)) {
-                return "Maaf, Tuah AI adalah pembantu pengurusan operasi perniagaan khusus untuk platform OpenKuasa bagi syarikat anda.\n\nSaya tidak dibenarkan menjana sebarang kod keselamatan siber, skrip analisis kerentanan (vulnerability scanner), atau alat penggodaman.\n\nPenggunaan Tuah AI dihadkan secara ketat untuk operasi perniagaan: Kewangan & Invois (Lekir), Modal Insan & Pengambilan Staf (Lekiu), Jualan/CRM & Produk (Kasturi), dan Pemasaran & Iklan (Jebat).";
+                return "Maaf, Tuah AI adalah pembantu pengurusan operasi perniagaan khusus untuk platform KerjaAI bagi syarikat anda.\n\nSaya tidak dibenarkan menjana sebarang kod keselamatan siber, skrip analisis kerentanan (vulnerability scanner), atau alat penggodaman.\n\nPenggunaan Tuah AI dihadkan secara ketat untuk operasi perniagaan: Kewangan & Invois (Lekir), Modal Insan & Pengambilan Staf (Lekiu), Jualan/CRM & Produk (Kasturi), dan Pemasaran & Iklan (Jebat).";
             }
         }
 
@@ -683,7 +683,7 @@ PANDUAN FORMAT MAKLUM BALAS:
         $hasAllowedMarkup = preg_match('/\b(html|css|markup|templat|template)\b/i', $normalized);
 
         if ($hasDisallowedLang && ($hasCodeIntent || preg_match('/\b(python|py|bash|sh|c\+\+|cpp|rust|golang|java)\b/i', $normalized))) {
-            return "Maaf, Tuah AI tidak dibenarkan menjana kod pengaturcaraan umum bagi mengelakkan pembaziran token dan penyalahgunaan sistem.\n\nSistem ini hanya menyokong kod format **HTML / CSS** khusus untuk paparan data perniagaan syarikat anda di OpenKuasa (seperti templat cetakan invois HTML, reka bentuk penyata kewangan, atau templat emel rasmi syarikat).\n\nSila kemukakan soalan berkaitan operasi dan pengurusan perniagaan syarikat anda.";
+            return "Maaf, Tuah AI tidak dibenarkan menjana kod pengaturcaraan umum bagi mengelakkan pembaziran token dan penyalahgunaan sistem.\n\nSistem ini hanya menyokong kod format **HTML / CSS** khusus untuk paparan data perniagaan syarikat anda di KerjaAI (seperti templat cetakan invois HTML, reka bentuk penyata kewangan, atau templat emel rasmi syarikat).\n\nSila kemukakan soalan berkaitan operasi dan pengurusan perniagaan syarikat anda.";
         }
 
         if ($hasCodeIntent && !$hasAllowedMarkup) {
@@ -699,7 +699,7 @@ PANDUAN FORMAT MAKLUM BALAS:
             if ($isCrossTenantAttempt) {
                 $org = $orgId ? Org::find($orgId) : null;
                 $orgName = $org?->name ?? 'syarikat anda';
-                return "Maaf, akses data dihadkan secara ketat kepada syarikat yang anda log masuk sahaja ({$orgName}) selaras dengan dasar kedaulatan data berbilang penyewa (multi-tenancy) OpenKuasa.\n\nAkaun anda tidak mempunyai kebenaran Superadmin untuk melihat atau merentas data syarikat/organisasi lain.";
+                return "Maaf, akses data dihadkan secara ketat kepada syarikat yang anda log masuk sahaja ({$orgName}) selaras dengan dasar kedaulatan data berbilang penyewa (multi-tenancy) KerjaAI.\n\nAkaun anda tidak mempunyai kebenaran Superadmin untuk melihat atau merentas data syarikat/organisasi lain.";
             }
         }
 
@@ -720,16 +720,16 @@ PANDUAN FORMAT MAKLUM BALAS:
         $isSuperadmin = $user?->isSuperadmin() ?? false;
 
         $tenancyRule = $isSuperadmin
-            ? "PENGGUNA INI ADALAH SUPERADMIN SISTEM: Pengguna mempunyai hak akses pentadbir super. Anda dibenarkan menganalisis data merentas syarikat dan status keseluruhan platform OpenKuasa sekiranya diminta oleh Superadmin."
+            ? "PENGGUNA INI ADALAH SUPERADMIN SISTEM: Pengguna mempunyai hak akses pentadbir super. Anda dibenarkan menganalisis data merentas syarikat dan status keseluruhan platform KerjaAI sekiranya diminta oleh Superadmin."
             : "ISOLASI DATA SYARIKAT (MULTI-TENANCY SOVEREIGNTY): Anda HANYA mempunyai akses kepada syarikat '{$orgName}' (ID: {$orgId}). Anda DILARANG KERAS merujuk, mendedahkan, merentas penyewa (cross-tenant), atau meneka data syarikat lain, pentadbir lain, atau sistem luar. Sekiranya pengguna meminta data syarikat lain atau meminta perbandingan rentas syarikat, tolak dengan tegas atas dasar kerahsiaan dan kedaulatan data syarikat.";
 
         $guardrails = <<<PROMPT
-=== PERANAN & HAD KESELAMATAN TUAH AI (SISTEM OPERASI PERNIAGAAN OPENKUASA) ===
-1. PERANAN UTAMA: Anda adalah Tuah AI, pembantu operasi perniagaan pintar Malaysia khusus untuk platform OpenKuasa. Anda membantu pengurusan syarikat merentas modul: Kewangan & Invois (Lekir), Modal Insan & Pengambilan Staf (Lekiu), Jualan/CRM & Produk (Kasturi), dan Pemasaran & Iklan (Jebat).
+=== PERANAN & HAD KESELAMATAN TUAH AI (SISTEM OPERASI PERNIAGAAN KERJAAI) ===
+1. PERANAN UTAMA: Anda adalah Tuah AI, pembantu operasi perniagaan pintar Malaysia khusus untuk platform KerjaAI. Anda membantu pengurusan syarikat merentas modul: Kewangan & Invois (Lekir), Modal Insan & Pengambilan Staf (Lekiu), Jualan/CRM & Produk (Kasturi), dan Pemasaran & Iklan (Jebat).
 2. HAD KOD PENGATURCARAAN (PROGRAMMING SCOPE RESTRICTION):
    - Anda DILARANG sama sekali menjana kod pengaturcaraan umum (seperti Python, Bash, C++, Java, Rust, Go, PHP backend, skrip penggodaman, atau analisis kerentanan keselamatan web).
-   - SATU-SATUNYA pengecualian kod yang dibenarkan adalah kod HTML / CSS untuk memformat, mereka bentuk laporan, atau templat dokumen bagi data perniagaan syarikat ini di dalam OpenKuasa (contoh: templat invois HTML, jadual penyata untung rugi, atau templat emel rasmi hebahan kakitangan).
-   - Sekiranya pengguna meminta anda membina kod di luar skop HTML data perniagaan syarikat ini, tolak dengan sopan dan jelaskan had peranan anda sebagai pembantu perniagaan OpenKuasa.
+   - SATU-SATUNYA pengecualian kod yang dibenarkan adalah kod HTML / CSS untuk memformat, mereka bentuk laporan, atau templat dokumen bagi data perniagaan syarikat ini di dalam KerjaAI (contoh: templat invois HTML, jadual penyata untung rugi, atau templat emel rasmi hebahan kakitangan).
+   - Sekiranya pengguna meminta anda membina kod di luar skop HTML data perniagaan syarikat ini, tolak dengan sopan dan jelaskan had peranan anda sebagai pembantu perniagaan KerjaAI.
 3. KAWALAN DATA MULTI-PENYEWA (MULTI-TENANCY):
    {$tenancyRule}
 4. KAWALAN PENGGUNAAN TOKEN & PENGELAKAN PENYALAHGUNAAN:
@@ -794,7 +794,7 @@ PROMPT;
 
             return $context;
         } catch (\Throwable) {
-            return "KONTEKS OPERASI: Platform OpenKuasa bersepadu merentas Kewangan (Lekir), Modal Insan (Lekiu), Jualan/Produk (Kasturi), dan Pemasaran (Jebat) bagi syarikat ID: {$orgId}.";
+            return "KONTEKS OPERASI: Platform KerjaAI bersepadu merentas Kewangan (Lekir), Modal Insan (Lekiu), Jualan/Produk (Kasturi), dan Pemasaran (Jebat) bagi syarikat ID: {$orgId}.";
         }
     }
 

@@ -101,7 +101,7 @@
                                 </div>
                                 <p class="text-xs text-slate-400 mt-0.5">
                                     @if(!empty($meta['connected']))
-                                        Akaun: <span class="font-mono text-slate-200">{{ $meta['account_id'] ?? 'act_82910481203' }}</span> &bull; Halaman: <span class="text-slate-200">{{ $meta['page_name'] ?? 'OpenKuasa Official' }}</span>
+                                        Akaun: <span class="font-mono text-slate-200">{{ $meta['account_id'] ?? 'act_82910481203' }}</span> &bull; Halaman: <span class="text-slate-200">{{ $meta['page_name'] ?? 'KerjaAI Official' }}</span>
                                     @else
                                         Hubungkan Facebook Page & Pengurus Iklan Meta
                                     @endif
@@ -631,7 +631,7 @@
                         </div>
                         <div>
                             <label class="block text-xs font-semibold text-slate-300 mb-1">Facebook Page Name</label>
-                            <input type="text" name="page_name" placeholder="OpenKuasa Official" value="{{ $meta['page_name'] ?? '' }}"
+                            <input type="text" name="page_name" placeholder="KerjaAI Official" value="{{ $meta['page_name'] ?? '' }}"
                                 class="w-full px-3 py-2 rounded-xl border border-slate-700 bg-slate-900 text-xs text-white focus:border-[#ff5376] focus:ring-1 focus:ring-[#ff5376]">
                         </div>
                     </div>

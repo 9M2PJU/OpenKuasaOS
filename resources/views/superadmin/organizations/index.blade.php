@@ -102,7 +102,7 @@
                         <!-- Metrik Pantas: Jumlah Invois & Staf -->
                         <td class="py-4 px-4">
                             <div class="flex items-center gap-2 flex-wrap">
-                                <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 text-[11px] font-medium border border-emerald-200/60 dark:border-emerald-800/60" title="Jumlah Invois Bendahara">
+                                <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 text-[11px] font-medium border border-emerald-200/60 dark:border-emerald-800/60" title="Jumlah Invois Lekir">
                                     <span>🧾</span>
                                     <span><strong>{{ $org->invoices_count }}</strong> Invois</span>
                                 </span>

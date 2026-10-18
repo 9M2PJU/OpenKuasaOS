@@ -56,10 +56,19 @@
                             </span>
                         </td>
                         <td class="p-4 text-right">
-                            <a href="{{ route('reach.studio', ['job_id' => $job->id]) }}" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-pink-50 dark:bg-pink-950/50 hover:bg-pink-100 dark:hover:bg-pink-900/60 text-pink-600 dark:text-pink-300 text-[11px] font-bold border border-pink-200/60 dark:border-pink-800/60 transition shadow-2xs">
-                                <span>⚡</span>
-                                <span>Jana Iklan Jebat</span>
-                            </a>
+                            <div class="flex items-center justify-end gap-1.5" x-data="{ linkCopied: false }">
+                                <a href="{{ route('careers.show', $job->slug ?: $job->id) }}" target="_blank" title="Buka Portal Calon" class="p-1.5 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+                                </a>
+                                <button type="button" @click="navigator.clipboard.writeText('{{ route('careers.show', $job->slug ?: $job->id) }}'); linkCopied = true; setTimeout(() => linkCopied = false, 2000)" title="Salin Link Permohonan Calon" class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-emerald-300/60 dark:border-emerald-800/60 bg-emerald-50/60 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 text-[11px] font-bold transition">
+                                    <span x-show="!linkCopied">🔗 Link Calon</span>
+                                    <span x-show="linkCopied" class="text-emerald-600 font-bold">✓ Disalin!</span>
+                                </button>
+                                <a href="{{ route('reach.studio', ['job_id' => $job->id]) }}" class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-pink-50 dark:bg-pink-950/50 hover:bg-pink-100 dark:hover:bg-pink-900/60 text-pink-600 dark:text-pink-300 text-[11px] font-bold border border-pink-200/60 dark:border-pink-800/60 transition shadow-2xs">
+                                    <span>⚡</span>
+                                    <span>Jana Iklan</span>
+                                </a>
+                            </div>
                         </td>
                     </tr>
                     @empty
@@ -108,9 +117,26 @@
                     </div>
                 </div>
                 <div>
-                    <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Deskripsi Tugas & Syarat Kelayakan</label>
-                    <textarea name="description" required rows="4" placeholder="Pengalaman dalam membina sistem berasaskan Laravel 13 dan pangkalan data PostgreSQL..."
+                    <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Deskripsi Tugas</label>
+                    <textarea name="description" required rows="3" placeholder="Bertanggungjawab mengurus operasi dan membangunkan sistem web..."
                         class="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs"></textarea>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Syarat Kelayakan &amp; Kemahiran (Penting untuk Saringan AI)</label>
+                    <textarea name="requirements" rows="3" placeholder="• Mahir dalam PHP, Laravel & PostgreSQL&#10;• Minimum 2 tahun pengalaman industri&#10;• Diploma / Ijazah dalam Sains Komputer atau setaraf"
+                        class="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs"></textarea>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Gaji Min (RM)</label>
+                        <input type="number" step="0.01" name="salary_min" placeholder="cth: 3000"
+                            class="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Gaji Max (RM)</label>
+                        <input type="number" step="0.01" name="salary_max" placeholder="cth: 5500"
+                            class="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs">
+                    </div>
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Status Iklan</label>

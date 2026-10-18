@@ -18,13 +18,22 @@ class LandingPageTest extends TestCase
         $response = $this->get('/');
 
         $response->assertStatus(200);
-        $response->assertSee('OpenKuasa');
+        $response->assertSee('KerjaAI');
         $response->assertSee('https://github.com/engkuhelmy/OpenKuasaOS');
         $response->assertSee('Tuah AI');
         $response->assertSee('Jebat');
         $response->assertSee('Kasturi');
         $response->assertSee('Lekiu');
         $response->assertSee('Lekir');
+        $response->assertSee('5 Modul');
+        $response->assertSee('5 Modul Pahlawan KerjaAI');
+        $response->assertSee('Terokai 5 Modul Pahlawan');
+        $response->assertSee('Studio Iklan');
+        $response->assertSee('Katalog Produk');
+        $response->assertSee('Pengambilan');
+        $response->assertSee('e-Invois');
+        $response->assertDontSee('6 Modul');
+        $response->assertDontSee('Bendahara');
         $response->assertSee('Log Masuk');
         $response->assertSee('Mula Percuma');
     }

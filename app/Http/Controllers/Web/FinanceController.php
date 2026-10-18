@@ -264,7 +264,7 @@ class FinanceController extends Controller
         $accounts = FinanceAccount::all();
 
         // Prepare WhatsApp link
-        $orgName = OrganizationContext::get()?->name ?? 'OpenKuasa Enterprise';
+        $orgName = OrganizationContext::get()?->name ?? 'KerjaAI Enterprise';
         $phone = preg_replace('/[^0-9]/', '', $invoice->customer_phone ?? '');
         if ($phone && !str_starts_with($phone, '60') && str_starts_with($phone, '0')) {
             $phone = '6' . $phone;
@@ -626,7 +626,7 @@ class FinanceController extends Controller
     public function showQuotation($id)
     {
         $quotation = FinanceQuotation::with(['lines', 'invoice'])->findOrFail($id);
-        $orgName = OrganizationContext::get()?->name ?? 'OpenKuasa Enterprise';
+        $orgName = OrganizationContext::get()?->name ?? 'KerjaAI Enterprise';
         $phone = preg_replace('/[^0-9]/', '', $quotation->customer_phone ?? '');
         if ($phone && !str_starts_with($phone, '60') && str_starts_with($phone, '0')) {
             $phone = '6' . $phone;

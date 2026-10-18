@@ -91,7 +91,7 @@
         <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm">
             <div class="flex items-center justify-between mb-4">
                 <div>
-                    <h2 class="text-base font-bold text-slate-900 dark:text-white">Invois Terkini (Bendahara)</h2>
+                    <h2 class="text-base font-bold text-slate-900 dark:text-white">Invois Terkini (Lekir)</h2>
                     <p class="text-xs text-slate-500">Status invois dan audit lejar jualan</p>
                 </div>
                 <a href="{{ route('finance.invoices') }}" class="text-xs font-semibold text-indigo-600 hover:text-indigo-500 dark:text-indigo-400">Lihat Semua &rarr;</a>

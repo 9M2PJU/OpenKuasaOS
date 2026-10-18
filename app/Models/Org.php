@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Org extends Model
 {
@@ -18,6 +19,7 @@ class Org extends Model
     protected $fillable = [
         'name',
         'slug',
+        'logo_url',
     ];
 
     public function members(): HasMany
@@ -48,5 +50,10 @@ class Org extends Model
     public function jobs(): HasMany
     {
         return $this->hasMany(HireJob::class);
+    }
+
+    public function smtpSetting(): HasOne
+    {
+        return $this->hasOne(OrgSmtpSetting::class, 'org_id');
     }
 }

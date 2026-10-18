@@ -23,7 +23,7 @@ class SuperadminSettingsController extends Controller
     {
         $health = $this->metricsService->getSystemHealth();
         $registrationEnabled = (bool) SystemSetting::get('registration_enabled', true);
-        $instanceName = (string) SystemSetting::get('instance_name', 'OpenKuasa Self-Hosted');
+        $instanceName = (string) SystemSetting::get('instance_name', 'KerjaAI Self-Hosted');
         $ownerUserId = (string) SystemSetting::get('owner_user_id', '');
 
         return view('superadmin.system.index', compact(
@@ -56,7 +56,7 @@ class SuperadminSettingsController extends Controller
             SystemSetting::set(
                 'instance_name',
                 $validated['instance_name'],
-                'Nama instalasi pelayan OpenKuasa'
+                'Nama instalasi pelayan KerjaAI'
             );
         }
 

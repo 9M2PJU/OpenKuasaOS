@@ -58,7 +58,7 @@ class AuthController extends Controller
             }
 
             return redirect()->intended(route('dashboard'))
-                ->with('success', 'Selamat kembali ke OpenKuasa!');
+                ->with('success', 'Selamat kembali ke KerjaAI!');
         }
 
         return back()->withErrors([

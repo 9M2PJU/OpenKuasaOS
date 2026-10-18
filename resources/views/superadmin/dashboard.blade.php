@@ -9,7 +9,7 @@
                 <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 dark:border-amber-700/60 uppercase tracking-widest">
                     Self-Hosted Master Console
                 </span>
-                <span class="text-xs text-slate-400">OpenKuasa Core</span>
+                <span class="text-xs text-slate-400">KerjaAI Core</span>
             </div>
             <h1 class="text-2xl font-bold tracking-tight text-slate-900 dark:text-white mt-1">
                 Pusat Kawalan Superadmin

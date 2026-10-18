@@ -13,11 +13,17 @@ use App\Http\Controllers\Web\Superadmin\SuperadminDashboardController;
 use App\Http\Controllers\Web\Superadmin\SuperadminOrgController;
 use App\Http\Controllers\Web\Superadmin\SuperadminSettingsController;
 use App\Http\Controllers\Web\Superadmin\SuperadminUserController;
+use App\Http\Controllers\Web\CareerPortalController;
 use App\Http\Controllers\Web\LandingController;
 use Illuminate\Support\Facades\Route;
 
 // Official Landing Page
 Route::get('/', [LandingController::class, 'index'])->name('landing');
+
+// Public Career Portal & AI Resume Screening Application (Accessible to candidates)
+Route::get('careers/{idOrSlug}', [CareerPortalController::class, 'show'])->name('careers.show');
+Route::post('careers/{idOrSlug}/parse-resume', [CareerPortalController::class, 'parseResume'])->name('careers.parse-resume');
+Route::post('careers/{idOrSlug}/apply', [CareerPortalController::class, 'apply'])->name('careers.apply');
 
 // Guest Authentication Routes
 Route::middleware('guest')->group(function () {
@@ -135,8 +141,12 @@ Route::middleware(['auth', 'tenant'])->group(function () {
         Route::post('jobs', [HireController::class, 'storeJob'])->name('jobs.store');
         Route::get('applications', [HireController::class, 'applications'])->name('applications');
         Route::post('applications/{id}/stage', [HireController::class, 'updateApplicationStage'])->name('applications.update-stage');
+        Route::post('applications/{id}/ai-screen', [HireController::class, 'aiScreenApplication'])->name('applications.ai-screen');
+        Route::get('applications/{id}/ai-analysis', [HireController::class, 'getAiAnalysis'])->name('applications.ai-analysis');
         Route::get('interviews', [HireController::class, 'interviews'])->name('interviews');
         Route::post('interviews', [HireController::class, 'storeInterview'])->name('interviews.store');
+        Route::put('interviews/{id}', [HireController::class, 'updateInterview'])->name('interviews.update');
+        Route::delete('interviews/{id}', [HireController::class, 'destroyInterview'])->name('interviews.destroy');
     });
 
     // Tetapan (Settings & Preferences)
@@ -144,6 +154,10 @@ Route::middleware(['auth', 'tenant'])->group(function () {
         Route::get('/', [SettingsController::class, 'index'])->name('index');
         Route::post('language', [SettingsController::class, 'updateLanguage'])->name('language');
         Route::post('profile', [SettingsController::class, 'updateProfile'])->name('profile');
+        Route::post('logo', [SettingsController::class, 'uploadLogo'])->name('logo');
+        Route::post('logo/remove', [SettingsController::class, 'removeLogo'])->name('logo.remove');
+        Route::post('smtp', [SettingsController::class, 'updateSmtp'])->name('smtp');
+        Route::post('smtp/test', [SettingsController::class, 'testSmtp'])->name('smtp.test');
         Route::post('password', [SettingsController::class, 'updatePassword'])->name('password');
     });
 });

@@ -129,7 +129,7 @@
                     <div class="grid grid-cols-12 gap-3 items-center bg-slate-50/60 dark:bg-slate-800/40 p-3 rounded-xl border border-slate-100 dark:border-slate-800">
                         <div class="col-span-12 sm:col-span-6">
                             <label class="block text-[11px] font-semibold text-slate-500 mb-1">Keterangan Item / Servis</label>
-                            <input type="text" :name="`lines[${index}][description]`" x-model="line.description" required placeholder="Cth: Pakej Langganan Sistem OpenKuasa" class="w-full px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs">
+                            <input type="text" :name="`lines[${index}][description]`" x-model="line.description" required placeholder="Cth: Pakej Langganan Sistem KerjaAI" class="w-full px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs">
                         </div>
 
                         <div class="col-span-4 sm:col-span-2">

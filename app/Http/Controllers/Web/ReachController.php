@@ -331,7 +331,7 @@ class ReachController extends Controller
             $settings['providers']['meta']['account_id'] = $validated['account_id'] ?: ($settings['providers']['meta']['account_id'] ?? 'act_82910481203');
             $settings['providers']['meta']['account_name'] = $validated['account_name'] ?: ($settings['providers']['meta']['account_name'] ?? 'Meta Business Suite');
             $settings['providers']['meta']['pixel_id'] = $validated['pixel_id'] ?: ($settings['providers']['meta']['pixel_id'] ?? 'px_4829103948');
-            $settings['providers']['meta']['page_name'] = $validated['page_name'] ?: ($settings['providers']['meta']['page_name'] ?? 'OpenKuasa Official');
+            $settings['providers']['meta']['page_name'] = $validated['page_name'] ?: ($settings['providers']['meta']['page_name'] ?? 'KerjaAI Official');
             $settings['providers']['meta']['page_linked'] = true;
             $settings['providers']['meta']['connected_at'] = now()->toDateString();
             $providerLabel = 'Meta Business';
@@ -410,7 +410,7 @@ class ReachController extends Controller
                     'connected' => true,
                     'account_id' => 'act_82910481203',
                     'pixel_id' => 'px_4829103948',
-                    'page_name' => 'OpenKuasa Official',
+                    'page_name' => 'KerjaAI Official',
                     'page_linked' => true,
                 ],
                 'google' => [
@@ -561,21 +561,27 @@ class ReachController extends Controller
                 : 'Gaji Kompetitif + Elaun';
             $desc = $job->description ?: 'Peluang membina kerjaya cemerlang dalam persekitaran yang dinamik.';
             $reqs = $job->requirements ?: 'Berdisiplin, bersikap positif dan bersemangat untuk belajar.';
+            $applyUrl = route('careers.show', $job->slug ?: $job->id);
 
             if ($platform === 'whatsapp') {
                 $headline = "📢 WAKAF KERJAYA: Jawatan Kosong Diperlukan Segera ({$title})";
-                $body = "Peluang Kerjaya Terbuka! 💼\n\nSyarikat kami sedang mencari individu berbakat dan bersemangat untuk mengisi kekosongan segera:\n\n📌 *Jawatan:* {$title}\n🏢 *Jabatan:* {$dept}\n💰 *Pakej Gaji:* {$salary}\n\n*Kelayakan Asas:*\n• {$reqs}\n\n*Faedah Pekerja:*\n• KWSP, PERKESO & SIP disediakan\n• Cuti tahunan & elaun prestasi\n• Peluang kenaikan pangkat\n\nSila hantarkan resume ringkas anda ke nombor WhatsApp ini atau balas *'MINAT KERJA'* untuk kami hubungi anda bagi sesi temuduga ringkas! 🤝";
-                $cta = "Hantar Resume ke WhatsApp";
+                $body = "Peluang Kerjaya Terbuka! 💼\n\nSyarikat kami sedang mencari individu berbakat dan bersemangat untuk mengisi kekosongan segera:\n\n📌 *Jawatan:* {$title}\n🏢 *Jabatan:* {$dept}\n💰 *Pakej Gaji:* {$salary}\n\n*Kelayakan Asas:*\n• {$reqs}\n\n*Faedah Pekerja:*\n• KWSP, PERKESO & SIP disediakan\n• Cuti tahunan & elaun prestasi\n• Peluang kenaikan pangkat\n\n🔗 *Pautan Permohonan Pantas & Muat Naik CV:*\n{$applyUrl}\n\n(Buka pautan di atas untuk isi maklumat asas & muat naik Resume. Sistem HR pintar kami akan menyemak kelayakan secara automatik!)\n\nAtau balas WhatsApp ini untuk sebarang pertanyaan ringkas! 🤝";
+                $cta = "Mohon Terus di {$applyUrl}";
                 $hashtags = "#KerjaKosong #JawatanKosong";
             } elseif ($platform === 'tiktok') {
                 $headline = "🎬 Skrip Video TikTok Rekrutmen: Kami Sedang Mencari {$title}!";
-                $body = "【0-3s HOOK VISUAL】\n(Tunjuk suasana ofis / team ceria bekerja)\n\"Korang yang tengah cari kerja santai tapi gaji on-time, dengar sini!\"\n\n【4-12s PERINCIAN JAWATAN】\n\"Team kami tengah expand dan perlukan {$title} secepat mungkin! Pakej gaji {$salary}.\"\n\n【13-20s SYARAT MUDAH】\n\"Yang penting {$reqs}. Ada latihan disediakan, jangan takut kalau kurang pengalaman.\"\n\n【21-30s CALL TO ACTION】\n\"Hantar resume laju-laju kat link bio kami sekarang sebelum kuota penuh!\"";
-                $cta = "Klik Link di Bio untuk Mohon";
+                $body = "【0-3s HOOK VISUAL】\n(Tunjuk suasana ofis / team ceria bekerja)\n\"Korang yang tengah cari kerja santai tapi gaji on-time, dengar sini!\"\n\n【4-12s PERINCIAN JAWATAN】\n\"Team kami tengah expand dan perlukan {$title} secepat mungkin! Pakej gaji {$salary}.\"\n\n【13-20s SYARAT MUDAH】\n\"Yang penting {$reqs}. Ada latihan disediakan, jangan takut kalau kurang pengalaman.\"\n\n【21-30s CALL TO ACTION】\n\"Hantar resume laju-laju kat link bio kami sekarang atau buka: {$applyUrl} sebelum kuota penuh!\"";
+                $cta = "Klik Link Bio: {$applyUrl}";
                 $hashtags = "#KerjaKosong #JawatanKosong2026 #HiringMalaysia #KerjaKL";
+            } elseif ($platform === 'google') {
+                $headline = "🔍 Google Ads Copy: Jawatan Kosong {$title}";
+                $body = "【HEADLINE 1 (Maks 30 aksara)】: Kerjaya: {$title}\n【HEADLINE 2 (Maks 30 aksara)】: Gaji {$salary}\n【HEADLINE 3 (Maks 30 aksara)】: Kemasukan Segera & Faedah\n\n【DESKRIPSI 1 (Maks 90 aksara)】: Mohon jawatan {$title} hari ini. {$reqs}\n【DESKRIPSI 2 (Maks 90 aksara)】: Mohon terus & muat naik resume di: {$applyUrl}";
+                $cta = "Mohon Online di {$applyUrl}";
+                $hashtags = "";
             } else {
                 $headline = "🚀 KAMI SEDANG MENGAMBIL: {$title} (Kemasukan Segera)";
-                $body = "Adakah anda individu yang kami cari?\n\nKami membuka peluang kerjaya yang menarik untuk posisi **{$title}** di bawah bahagian **{$dept}**.\n\n💰 **Tawaran Pendapatan:**\n{$salary} + Caruman Berkanun KWSP/SOCSO/EIS + Bonus Prestasi\n\n📋 **Tanggungjawab & Keperluan:**\n• {$desc}\n• {$reqs}\n\n🌟 **Mengapa Sertai Kami?**\n• Budaya kerja yang telus dan menyokong perkembangan diri\n• Kemudahan kerja yang kondusif\n• Laluan kenaikan pangkat yang jelas\n\n👇 **Cara Memohon:**\nKlik pautan permohonan atau emelkan resume terkini anda kepada pasukan HR kami hari ini:";
-                $cta = "Mohon Sekarang / Hantar Resume";
+                $body = "Adakah anda individu yang kami cari?\n\nKami membuka peluang kerjaya yang menarik untuk posisi **{$title}** di bawah bahagian **{$dept}**.\n\n💰 **Tawaran Pendapatan:**\n{$salary} + Caruman Berkanun KWSP/SOCSO/EIS + Bonus Prestasi\n\n📋 **Tanggungjawab & Keperluan:**\n• {$desc}\n• {$reqs}\n\n🌟 **Mengapa Sertai Kami?**\n• Budaya kerja yang telus dan menyokong perkembangan diri\n• Kemudahan kerja yang kondusif\n• Laluan kenaikan pangkat yang jelas\n\n👇 **Cara Memohon:**\nKlik pautan rasmi di bawah untuk mengisi maklumat & memuat naik Resume/CV anda. Sistem AI Lekir kami akan memproses saringan kelayakan dengan pantas:\n🔗 {$applyUrl}";
+                $cta = "Mohon Sekarang / Muat Naik CV";
                 $hashtags = "#JawatanKosong #KerjaKosongMalaysia #KekosonganJawatan #CareerOpportunity";
             }
 
@@ -588,6 +594,7 @@ class ReachController extends Controller
                 'body' => $body,
                 'cta' => $cta,
                 'hashtags' => $hashtags,
+                'apply_url' => $applyUrl,
             ]);
         }
     }

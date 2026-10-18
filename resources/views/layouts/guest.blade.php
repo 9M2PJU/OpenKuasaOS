@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>{{ $title ?? 'OpenKuasa' }} — Log Masuk</title>
+    <title>{{ $title ?? 'KerjaAI' }} — Log Masuk</title>
     <link rel="icon" type="image/x-icon" href="{{ asset('favicon.ico') }}">
     <link rel="icon" type="image/png" sizes="32x32" href="{{ asset('favicon-32x32.png') }}">
     <link rel="apple-touch-icon" sizes="180x180" href="{{ asset('apple-touch-icon.png') }}">
@@ -40,9 +40,9 @@
         <!-- Logo -->
         <div class="text-center mb-8">
             <div class="inline-flex w-16 h-16 rounded-2xl overflow-hidden items-center justify-center shadow-lg mb-3 ring-2 ring-indigo-500/20 bg-white">
-                <img src="{{ asset('images/logo.png') }}" alt="OpenKuasa Logo" class="w-full h-full object-cover">
+                <img src="{{ asset('images/logo.png') }}" alt="KerjaAI Logo" class="w-full h-full object-cover">
             </div>
-            <h1 class="text-2xl font-bold tracking-tight">Open<span class="text-indigo-600 dark:text-indigo-400">Kuasa</span></h1>
+            <h1 class="text-2xl font-bold tracking-tight">Kerja<span class="text-indigo-600 dark:text-indigo-400">AI</span></h1>
             <p class="text-xs text-slate-500 mt-1">Platform Pengurusan Operasi Perniagaan PKS Malaysia</p>
         </div>
 
@@ -63,7 +63,7 @@
         </div>
 
         <p class="text-center text-xs text-slate-400 mt-6">
-            &copy; {{ date('Y') }} OpenKuasa. Dikuasakan oleh Laravel 13 & PostgreSQL.
+            &copy; {{ date('Y') }} KerjaAI. Dikuasakan oleh Laravel 13 & PostgreSQL.
         </p>
     </div>
 </body>

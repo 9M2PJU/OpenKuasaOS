@@ -20,9 +20,12 @@ class HireInterview extends Model
         'org_id',
         'application_id',
         'interviewer_id',
+        'interviewer_name',
         'scheduled_at',
         'mode', // online, in_person
+        'location_or_link',
         'meeting_link',
+        'notes',
         'feedback',
         'status', // scheduled, completed, cancelled
     ];

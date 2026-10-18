@@ -1,11 +1,13 @@
-# OpenKuasa OS (Laravel 13 + PostgreSQL)
+# KerjaAI (Laravel 13 + PostgreSQL)
 
 **Sistem Operasi Perniagaan AI Sumber Terbuka Pertama untuk PKS Malaysia.**  
 Satu aplikasi *self-hostable* merangkumi CRM, Pemasaran, HR, Pengambilan Staf, dan Perakaunan dengan Pusat Arahan AI pintar — menggantikan langganan perisian SaaS berasingan yang mahal.
 
-Dikuasakan oleh **Laravel 13**, **PostgreSQL**, dan **Tailwind CSS v4** Blade templates.
+> [!NOTE]
+> **Pemberitahuan Asal Usul Projek (*Fork Disclosure*):**  
+> **KerjaAI** adalah projek sumber terbuka berasaskan komuniti (*crowd-sourced*), yang merupakan **fork** dan asalnya diasaskan daripada projek [OpenKuasa (OpenKuasaOS)](https://github.com/engkuhelmy/OpenKuasaOS). Pembangunan diteruskan secara telus dan aktif oleh komuniti serta penyumbang sukarela.
 
-OpenKuasa adalah projek sumber terbuka berasaskan komuniti (*crowd-sourced*), dibangunkan secara telus oleh penyelenggara dan penyumbang sukarela.
+Dikuasakan oleh **Laravel 13**, **PostgreSQL**, dan **Tailwind CSS v4** Blade templates.
 
 **Percuma untuk dihos sendiri, selamanya.** Dilesenkan di bawah [AGPL-3.0](LICENSE).
 
@@ -13,28 +15,11 @@ OpenKuasa adalah projek sumber terbuka berasaskan komuniti (*crowd-sourced*), di
 
 ## 🏛️ Seni Bina 5 Bersaudara (The 5 Brothers Architecture)
 
-OpenKuasa OS disusun mengikut falsafah pahlawan 5 Bersaudara Melaka yang mewakili lima tunjang teras operasi perniagaan moden:
+KerjaAI disusun mengikut falsafah pahlawan 5 Bersaudara Melaka yang mewakili lima tunjang teras operasi perniagaan moden:
 
-```
-                      ┌────────────────────────┐
-                      │    ⚡ HANG TUAH        │
-                      │  Pusat Arahan Pintar   │
-                      │    (AI Business Brain) │
-                      └───────────┬────────────┘
-         ┌────────────────────────┼────────────────────────┐
-         │                        │                        │
-┌────────┴────────┐      ┌────────┴────────┐      ┌────────┴────────┐
-│  📢 HANG JEBAT  │      │ 🤝 HANG KASTURI │      │  👥 HANG LEKIU  │
-│ Pemasaran & Ad  │◄────►│ CRM & Katalog   │◄────►│ HRMS, Gaji &    │
-│  Studio (Reach) │      │  Produk/Servis  │      │ Pengambilan     │
-└─────────────────┘      └────────┬────────┘      └─────────────────┘
-                                  │
-                         ┌────────┴────────┐
-                         │  ⚖️ HANG LEKIR  │
-                         │ Kewangan, Lejar │
-                         │ & e-Invois LHDN │
-                         └─────────────────┘
-```
+<p align="center">
+  <img src="public/images/5-saudara.jpg" alt="Seni Bina 5 Bersaudara KerjaAI" width="100%">
+</p>
 
 | Modul | Nama Pahlawan | Peranan & Fungsi Utama | Laluan Web |
 | --- | --- | --- | --- |
@@ -163,4 +148,4 @@ Rujuk fail [PRD.md](PRD.md) untuk dokumen keperluan produk penuh, seni bina tekn
 
 ## 📄 Lesen
 
-Dilesenkan di bawah [AGPL-3.0](LICENSE). Hak cipta terpelihara komuniti OpenKuasa.
+Dilesenkan di bawah [AGPL-3.0](LICENSE). Hak cipta terpelihara komuniti KerjaAI & OpenKuasa.

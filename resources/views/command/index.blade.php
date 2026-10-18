@@ -460,7 +460,7 @@ document.addEventListener('alpine:init', () => {
                         ⚡
                     </div>
                     <div class="bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 rounded-2xl rounded-tl-sm p-4 text-xs text-slate-800 dark:text-slate-200 max-w-xl space-y-2">
-                        <p class="font-semibold text-slate-900 dark:text-white">Salam sejahtera! Saya Tuah, pembantu operasi perniagaan pintar OpenKuasa anda.</p>
+                        <p class="font-semibold text-slate-900 dark:text-white">Salam sejahtera! Saya Tuah, pembantu operasi perniagaan pintar KerjaAI anda.</p>
                         <p class="text-slate-600 dark:text-slate-400">Saya sedia membantu anda menyelaraskan keputusan merentas kewangan &amp; invois (*Lekir*), modal insan &amp; pengambilan staf (*Lekiu*), jualan &amp; produk (*Kasturi*), serta pengiklanan (*Jebat*).</p>
                         <div class="pt-2 border-t border-slate-100 dark:border-slate-800/80 flex flex-wrap gap-1.5">
                             <span class="text-[10px] text-slate-400">Cuba klik arahan pantas:</span>

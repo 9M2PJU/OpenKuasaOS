@@ -3,7 +3,7 @@
 @section('content')
 <div class="mb-6">
     <h2 class="text-xl font-bold tracking-tight text-slate-900 dark:text-white">Daftar Akaun Syarikat</h2>
-    <p class="text-xs text-slate-500 mt-1">Mulakan pengurusan perniagaan anda dengan ekosistem pintar OpenKuasa.</p>
+    <p class="text-xs text-slate-500 mt-1">Mulakan pengurusan perniagaan anda dengan ekosistem pintar KerjaAI.</p>
 </div>
 
 <form method="POST" action="{{ route('register') }}" class="space-y-4">

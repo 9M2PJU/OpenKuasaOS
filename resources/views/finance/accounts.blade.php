@@ -1,11 +1,11 @@
-@extends('layouts.app', ['title' => 'Akaun Bank & Tunai — Bendahara'])
+@extends('layouts.app', ['title' => 'Akaun Bank & Tunai — Lekir'])
 
 @section('content')
 <div class="space-y-6" x-data="{ addModal: false }">
     <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
             <div class="flex items-center gap-2">
-                <a href="{{ route('finance.index') }}" class="text-xs text-indigo-600 dark:text-indigo-400 font-semibold hover:underline">&larr; Bendahara</a>
+                <a href="{{ route('finance.index') }}" class="text-xs text-indigo-600 dark:text-indigo-400 font-semibold hover:underline">&larr; Lekir</a>
                 <span class="text-slate-400 text-xs">/</span>
                 <span class="text-xs text-slate-500 font-medium">Akaun Bank</span>
             </div>

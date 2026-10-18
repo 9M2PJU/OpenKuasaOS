@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>OpenKuasa — Sistem Operasi Perniagaan AI Sumber Terbuka Pertama Malaysia</title>
+    <title>KerjaAI — Sistem Operasi Perniagaan AI Sumber Terbuka Pertama Malaysia</title>
     <meta name="description" content="Iklan, jualan, staf, kewangan dan e-Invois LHDN dalam satu log masuk. 100% Sumber Terbuka berasaskan Laravel dan PostgreSQL dengan ejen pintar Tuah AI.">
     <link rel="icon" type="image/x-icon" href="{{ asset('favicon.ico') }}">
     <link rel="icon" type="image/png" sizes="32x32" href="{{ asset('favicon-32x32.png') }}">
@@ -141,7 +141,7 @@
 
         .ap-grid {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: repeat(3, 1fr);
             gap: var(--ap-gap);
             max-width: 1280px;
             margin: 0 auto;
@@ -263,7 +263,7 @@
             <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-400/30">
                 ⚡ V2.0 Sumber Terbuka
             </span>
-            <span>OpenKuasa — Sistem Operasi Perniagaan Berkuasa AI 100% Percuma &amp; Self-Hosted Malaysia.</span>
+            <span>KerjaAI — Sistem Operasi Perniagaan Berkuasa AI 100% Percuma &amp; Self-Hosted Malaysia.</span>
             <a href="https://github.com/engkuhelmy/OpenKuasaOS" target="_blank" rel="noopener noreferrer">
                 Bintang di GitHub <span aria-hidden="true">&rsaquo;</span>
             </a>
@@ -279,11 +279,11 @@
             <div class="flex items-center gap-8">
                 <a href="{{ route('landing') }}" class="flex items-center gap-2.5 group">
                     <div class="w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center shadow-md shadow-indigo-500/20 group-hover:scale-105 transition-transform bg-white/10 p-0.5">
-                        <img src="{{ asset('images/logo.png') }}" alt="OpenKuasa Logo" class="w-full h-full object-cover rounded-[10px]">
+                        <img src="{{ asset('images/logo.png') }}" alt="KerjaAI Logo" class="w-full h-full object-cover rounded-[10px]">
                     </div>
                     <div class="flex flex-col">
                         <span class="font-extrabold text-lg text-white tracking-tight leading-none">
-                            Open<span class="text-indigo-400">Kuasa</span>
+                            Kerja<span class="text-indigo-400">AI</span>
                         </span>
                         <span class="text-[9px] uppercase tracking-widest text-slate-400 font-semibold mt-0.5">Open Source AI Business Platform</span>
                     </div>
@@ -338,7 +338,7 @@
             <div class="max-w-7xl mx-auto">
                 <div class="flex items-center justify-between pb-4 mb-6 border-b border-slate-800">
                     <div>
-                        <h4 class="text-sm font-bold text-white uppercase tracking-wider">6 Modul Pahlawan OpenKuasa</h4>
+                        <h4 class="text-sm font-bold text-white uppercase tracking-wider">5 Modul Pahlawan KerjaAI</h4>
                         <p class="text-xs text-slate-400 mt-0.5">Semua peranti operasi perniagaan anda bersatu dalam satu pangkalan data terbuka.</p>
                     </div>
                     <span class="text-xs font-medium text-indigo-400 bg-indigo-950/60 border border-indigo-800 px-3 py-1 rounded-full">
@@ -346,7 +346,7 @@
                     </span>
                 </div>
 
-                <div class="grid grid-cols-2 lg:grid-cols-3 gap-6">
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     @foreach($modules as $mod)
                     <div class="group p-3 rounded-2xl border border-slate-800/80 bg-slate-950/50 hover:bg-slate-800/50 hover:border-indigo-500/40 transition">
                         <div class="flex items-center gap-3">
@@ -355,7 +355,7 @@
                                 @elseif($mod['code'] === 'jebat') 📢
                                 @elseif($mod['code'] === 'kasturi') 🤝
                                 @elseif($mod['code'] === 'lekiu') 👥
-                                @elseif($mod['code'] === 'lekir') 🎯
+                                @elseif($mod['code'] === 'lekir') ⚖️
                                 @else 💼
                                 @endif
                             </span>
@@ -390,7 +390,15 @@
                 <div class="grid grid-cols-2 gap-2 text-xs">
                     @foreach($modules as $m)
                     <div class="p-2 rounded-lg bg-slate-900 border border-slate-800 flex items-center gap-2">
-                        <span class="text-xs">⚡</span>
+                        <span class="text-xs">
+                            @if($m['code'] === 'tuah') 🧠
+                            @elseif($m['code'] === 'jebat') 📢
+                            @elseif($m['code'] === 'kasturi') 🤝
+                            @elseif($m['code'] === 'lekiu') 👥
+                            @elseif($m['code'] === 'lekir') ⚖️
+                            @else ⚡
+                            @endif
+                        </span>
                         <span class="font-bold text-white">{{ $m['name'] }}</span>
                     </div>
                     @endforeach
@@ -423,7 +431,7 @@
         <!-- Badge Pelancaran -->
         <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/10 border border-white/20 backdrop-blur-md text-xs font-semibold text-slate-200 mb-8 z-10 shadow-lg shadow-black/40">
             <span class="live-dot"></span>
-            <span>OpenKuasa V2.0 &bull; Alternatif Sumber Terbuka Kuasa AI Pertama Malaysia</span>
+            <span>KerjaAI V2.0 &bull; Alternatif Sumber Terbuka Kuasa AI Pertama Malaysia</span>
         </div>
 
         <!-- Headline Dinamik dengan Text Rotator -->
@@ -443,7 +451,7 @@
         <div class="flex flex-wrap items-center justify-center gap-4 mt-8 z-10">
             @auth
                 <a href="{{ route('dashboard') }}" class="inline-flex items-center gap-2.5 px-8 py-3.5 rounded-full bg-white text-slate-950 font-bold text-base hover:bg-slate-100 transition shadow-xl hover:scale-105 transform">
-                    <span>Buka Sistem OpenKuasa</span>
+                    <span>Buka Sistem KerjaAI</span>
                     <span aria-hidden="true">&rsaquo;</span>
                 </a>
             @else
@@ -454,7 +462,7 @@
             @endauth
 
             <a href="#ekosistem" class="inline-flex items-center gap-2 px-7 py-3.5 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-white font-semibold text-base transition backdrop-blur-md">
-                <span>Terokai 6 Modul Pahlawan</span>
+                <span>Terokai 5 Modul Pahlawan</span>
                 <span aria-hidden="true">&rsaquo;</span>
             </a>
         </div>
@@ -476,7 +484,7 @@
         </div>
 
         <!-- ==============================================
-             PIXEL OFFICE OPENKUASA (ANIMATED RETRO HQ)
+             PIXEL OFFICE KERJAAI (ANIMATED RETRO HQ)
              ============================================== -->
         <div class="w-full max-w-5xl mt-12 mb-2 z-10 px-2 sm:px-4">
             <div class="rounded-3xl border border-white/15 bg-slate-950/85 backdrop-blur-xl overflow-hidden shadow-2xl shadow-indigo-950/70 transition hover:border-indigo-500/40">
@@ -485,7 +493,7 @@
                     <div class="flex items-center gap-2.5">
                         <span class="live-dot"></span>
                         <span class="font-extrabold text-white tracking-wide uppercase text-[11px] flex items-center gap-1.5">
-                            <span>🏢</span> OpenKuasa Live Pixel HQ &bull; Simulasi Pejabat Beroperasi
+                            <span>🏢</span> KerjaAI Live Pixel HQ &bull; Simulasi Pejabat Beroperasi
                         </span>
                     </div>
                     <div class="flex items-center gap-2">
@@ -540,7 +548,7 @@
             <div class="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
                 <div>
                     <p class="text-xs uppercase tracking-widest font-bold text-slate-600">Ekosistem Pahlawan</p>
-                    <p class="text-4xl font-extrabold text-slate-900 mt-2">6 Modul</p>
+                    <p class="text-4xl font-extrabold text-slate-900 mt-2">5 Modul</p>
                     <p class="text-xs text-slate-700 mt-1">Bersepadu Dalam Satu Pangkalan Data</p>
                 </div>
                 <div>
@@ -685,28 +693,28 @@
         </section>
 
         <!-- ==============================================
-             6. BENTO GRID 2x2: MODUL-MODUL OPERASI UTAMA
+             6. BENTO GRID: MODUL-MODUL OPERASI UTAMA
              ============================================== -->
         <div class="ap-grid">
-            <!-- Bento 1: Kasturi (CRM & Saluran Jualan) -->
+            <!-- Bento 1: Kasturi (CRM, Jualan & Katalog Produk) -->
             <section class="ap-tile">
                 <div class="flex items-center justify-between mb-4">
                     <span class="w-10 h-10 rounded-2xl bg-emerald-100 text-emerald-600 flex items-center justify-center font-bold text-xl">
                         🤝
                     </span>
                     <span class="text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                        Kasturi &bull; CRM &amp; Jualan
+                        Kasturi &bull; Jualan &amp; Katalog Produk
                     </span>
                 </div>
-                <h3 class="text-2xl font-bold text-slate-900">Saluran Jualan &amp; Corong Urus Niaga</h3>
+                <h3 class="text-2xl font-bold text-slate-900">Saluran Urus Niaga &amp; Katalog Produk</h3>
                 <p class="text-sm text-slate-600 mt-2 leading-relaxed">
-                    Urus prospek daripada klik pertama iklan sehingga menjadi pelanggan setia. Corong visual Kanban untuk setiap fasa rundingan jualan.
+                    Urus prospek dari klik pertama iklan sehingga menjadi pelanggan setia. Corong visual Kanban, direktori pelanggan, dan katalog inventori produk dengan pintasan jana iklan terus ke Jebat.
                 </p>
 
-                <!-- Mockup Corong Urus Niaga -->
+                <!-- Mockup Corong Urus Niaga & Produk -->
                 <div class="mt-6 p-4 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-3">
                     <div class="flex items-center justify-between text-xs pb-2 border-b border-slate-100">
-                        <span class="font-bold text-slate-800">Prospek: Encik Hairi (SME Retail)</span>
+                        <span class="font-bold text-slate-800">Urus Niaga: Retail Maju Jaya</span>
                         <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-700">Rundingan</span>
                     </div>
                     <div class="flex items-center justify-between">
@@ -721,94 +729,81 @@
                             <span class="w-3.5 h-1.5 rounded-full bg-slate-200"></span>
                         </div>
                     </div>
-                    <p class="text-[11px] text-slate-500">Tindakan Seterusnya: Sedia untuk jana sebut harga di Lekir Kewangan.</p>
+                    <!-- Katalog Produk Snippet -->
+                    <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-100 text-xs flex items-center justify-between">
+                        <div>
+                            <span class="font-bold text-slate-900 block">Minyak Wangi Kasturi 50ml</span>
+                            <span class="text-[10px] text-slate-500">SKU-WNG-50 &bull; Stok: 80 unit</span>
+                        </div>
+                        <span class="font-extrabold text-emerald-600 text-xs">RM 120.00</span>
+                    </div>
+                    <p class="text-[11px] text-slate-500">Pintasan: 1-Klik hantar produk ke Jebat Ad Studio atau tukar deal ke invois Lekir.</p>
                 </div>
             </section>
 
-            <!-- Bento 2: Lekiu (HR & Gaji Tempatan) -->
+            <!-- Bento 2: Lekiu (Modal Insan, Gaji Tempatan & Pengambilan Staf) -->
             <section class="ap-tile">
                 <div class="flex items-center justify-between mb-4">
                     <span class="w-10 h-10 rounded-2xl bg-cyan-100 text-cyan-700 flex items-center justify-center font-bold text-xl">
                         👥
                     </span>
                     <span class="text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-cyan-50 text-cyan-700 border border-cyan-200">
-                        Lekiu &bull; HR &amp; Gaji
+                        Lekiu &bull; Modal Insan &amp; Pengambilan
                     </span>
                 </div>
-                <h3 class="text-2xl font-bold text-slate-900">Pengurusan Pekerja &amp; Slip Gaji Berkanun</h3>
+                <h3 class="text-2xl font-bold text-slate-900">Slip Gaji Statutori &amp; Pengambilan Staf</h3>
                 <p class="text-sm text-slate-600 mt-2 leading-relaxed">
-                    Patuhi undang-undang perburuhan Malaysia tanpa pening kepala. Kehadiran GPS, cuti staf, dan kiraan automatik KWSP, PERKESO, EIS &amp; PCB.
+                    Patuhi akta buruh Malaysia tanpa pening kepala. Kehadiran GPS, kelulusan cuti, pengiraan caruman KWSP, PERKESO, EIS, PCB serta portal pengambilan bakat (Hire / ATS).
                 </p>
 
-                <!-- Mockup Slip Gaji & Attendance -->
+                <!-- Mockup Slip Gaji & Calon Resume -->
                 <div class="mt-6 p-4 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-2.5">
                     <div class="flex items-center justify-between text-xs pb-2 border-b border-slate-100">
-                        <span class="font-bold text-slate-800">Slip Gaji Staf: Aina Farhana</span>
+                        <span class="font-bold text-slate-800">Penggajian: Aina Farhana</span>
                         <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">Telah Disahkan</span>
                     </div>
-                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-2 text-xs">
-                        <div class="p-3 sm:p-2 rounded-xl bg-slate-50 flex items-center justify-between sm:block sm:text-center">
-                            <span class="text-[11px] sm:text-[9px] uppercase font-bold text-slate-600">Gaji Pokok</span>
-                            <p class="font-bold text-slate-900 text-base sm:text-xs sm:mt-0.5">RM 4,500</p>
+                    <div class="grid grid-cols-3 gap-2 text-xs">
+                        <div class="p-2 rounded-xl bg-slate-50 text-center">
+                            <span class="text-[9px] uppercase font-bold text-slate-600 block">Gaji Pokok</span>
+                            <p class="font-bold text-slate-900 text-xs mt-0.5">RM 4,500</p>
                         </div>
-                        <div class="p-3 sm:p-2 rounded-xl bg-slate-50 flex items-center justify-between sm:block sm:text-center">
-                            <span class="text-[11px] sm:text-[9px] uppercase font-bold text-slate-600">KWSP + SOCSO</span>
-                            <p class="font-bold text-rose-600 dark:text-rose-500 text-base sm:text-xs sm:mt-0.5">-RM 585</p>
+                        <div class="p-2 rounded-xl bg-slate-50 text-center">
+                            <span class="text-[9px] uppercase font-bold text-slate-600 block">KWSP+SOCSO</span>
+                            <p class="font-bold text-rose-600 text-xs mt-0.5">-RM 585</p>
                         </div>
-                        <div class="p-3 sm:p-2 rounded-xl bg-emerald-50 border border-emerald-200/60 flex items-center justify-between sm:block sm:text-center">
-                            <span class="text-[11px] sm:text-[9px] uppercase font-bold text-emerald-800">Gaji Bersih</span>
-                            <p class="font-extrabold text-emerald-700 text-lg sm:text-xs sm:mt-0.5">RM 3,915</p>
+                        <div class="p-2 rounded-xl bg-emerald-50 border border-emerald-200/60 text-center">
+                            <span class="text-[9px] uppercase font-bold text-emerald-800 block">Bersih</span>
+                            <p class="font-extrabold text-emerald-700 text-xs mt-0.5">RM 3,915</p>
                         </div>
                     </div>
-                    <p class="text-[11px] text-slate-500">Jam Masuk GPS: 08:58 AM &bull; Pejabat HQ Damansara</p>
+                    <!-- ATS Calon Snippet -->
+                    <div class="p-2.5 rounded-xl bg-purple-50/70 border border-purple-100 text-xs flex items-center justify-between">
+                        <div>
+                            <span class="font-bold text-slate-900 block">Calon: Syamil (Senior Dev)</span>
+                            <span class="text-[10px] text-slate-500">Iklan: Eksekutif Pemasaran &bull; Padanan AI 94%</span>
+                        </div>
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700">Temu Duga</span>
+                    </div>
+                    <p class="text-[11px] text-slate-500">Integrasi: Hantar iklan jawatan ke Jebat Studio &amp; kos gaji dieksport ke Lejar Lekir.</p>
                 </div>
             </section>
 
-            <!-- Bento 3: Lekir (Pengambilan Pekerja & AI Talent Screener) -->
-            <section class="ap-tile">
-                <div class="flex items-center justify-between mb-4">
-                    <span class="w-10 h-10 rounded-2xl bg-purple-100 text-purple-700 flex items-center justify-center font-bold text-xl">
-                        🎯
-                    </span>
-                    <span class="text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-purple-50 text-purple-700 border border-purple-200">
-                        Lekir &bull; Pengambilan Pekerja
-                    </span>
-                </div>
-                <h3 class="text-2xl font-bold text-slate-900">Perekrut AI 24/7 &amp; Tapisan Resume</h3>
-                <p class="text-sm text-slate-600 mt-2 leading-relaxed">
-                    Siarkan jawatan kosong dan biar AI menapis resume calon mengikut kesesuaian kemahiran. Jimat berpuluh jam proses saringan manual.
-                </p>
-
-                <!-- Mockup Calon & AI Match Score -->
-                <div class="mt-6 p-4 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-2.5">
-                    <div class="flex items-center justify-between text-xs pb-2 border-b border-slate-100">
-                        <span class="font-bold text-slate-800">Calon: Syamil (Senior Full-Stack)</span>
-                        <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700">Padanan 94%</span>
-                    </div>
-                    <div class="flex items-center justify-between text-xs">
-                        <span class="text-slate-600">Kemahiran Dikenalpasti:</span>
-                        <span class="font-mono text-[11px] text-indigo-600 font-bold">Laravel &bull; Vue &bull; PostgreSQL</span>
-                    </div>
-                    <p class="text-[11px] text-slate-500">Jadual Temuduga: Sedia untuk dijemput melalui portal permohonan Lekir.</p>
-                </div>
-            </section>
-
-            <!-- Bento 4: Lekir (Kewangan, e-Invois LHDN & Perakaunan) -->
+            <!-- Bento 3: Lekir (Kewangan, e-Invois LHDN & Perakaunan) -->
             <section class="ap-tile">
                 <div class="flex items-center justify-between mb-4">
                     <span class="w-10 h-10 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center font-bold text-xl">
-                        💼
+                        ⚖️
                     </span>
                     <span class="text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
-                        Lekir &bull; Kewangan &amp; Cukai
+                        Lekir &bull; Kewangan &amp; e-Invois LHDN
                     </span>
                 </div>
-                <h3 class="text-2xl font-bold text-slate-900">Sebut Harga ke Invois &amp; Kesediaan MyInvois LHDN</h3>
+                <h3 class="text-2xl font-bold text-slate-900">Invois, Lejar Berimbang &amp; Cukai SST</h3>
                 <p class="text-sm text-slate-600 mt-2 leading-relaxed">
-                    Jana sebut harga dan tukar ke invois dengan satu klik. Simpan resit Shoebox, jejak lejar perakaunan dan bersedia untuk e-Invois LHDN.
+                    Menyandang amanah kewangan perbendaharaan: sebut harga ke invois jualan, kira cukai SST (6%/8%), persediaan portal MyInvois LHDN, lejar Debit = Kredit dan simpan resit Shoebox.
                 </p>
 
-                <!-- Mockup Invois & MyInvois Ready -->
+                <!-- Mockup Invois & Lejar Ready -->
                 <div class="mt-6 p-4 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-2.5">
                     <div class="flex items-center justify-between text-xs pb-2 border-b border-slate-100">
                         <span class="font-bold text-slate-800">Invois #INV-2026-081</span>
@@ -823,6 +818,11 @@
                             <span class="text-[10px] uppercase font-bold text-slate-600">Cukai SST (6%)</span>
                             <p class="text-sm font-bold text-slate-700">RM 507.00</p>
                         </div>
+                    </div>
+                    <!-- Lejar Snippet -->
+                    <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-100 text-xs flex items-center justify-between font-mono">
+                        <span class="text-slate-600 text-[10px]">Lejar Am:</span>
+                        <span class="text-emerald-600 font-bold text-[10px]">Debit RM8,957 = Kredit RM8,957 ✓</span>
                     </div>
                     <p class="text-[11px] text-slate-500">Cetak PDF segera atau kongsi pautan rasmi terus ke WhatsApp / Emel pelanggan.</p>
                 </div>
@@ -850,22 +850,22 @@
                 <div class="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 text-center">
                     <span class="text-2xl">📢</span>
                     <h5 class="text-sm font-bold text-white mt-1">Jebat</h5>
-                    <p class="text-[11px] text-slate-400">Pemasaran &amp; Iklan</p>
+                    <p class="text-[11px] text-slate-400">Pemasaran &amp; Studio Iklan</p>
                 </div>
                 <div class="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 text-center">
                     <span class="text-2xl">🤝</span>
                     <h5 class="text-sm font-bold text-white mt-1">Kasturi</h5>
-                    <p class="text-[11px] text-slate-400">Jualan &amp; Produk</p>
+                    <p class="text-[11px] text-slate-400">Jualan &amp; Katalog Produk</p>
                 </div>
                 <div class="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 text-center">
                     <span class="text-2xl">👥</span>
                     <h5 class="text-sm font-bold text-white mt-1">Lekiu</h5>
-                    <p class="text-[11px] text-slate-400">HR, Gaji &amp; Calon</p>
+                    <p class="text-[11px] text-slate-400">Modal Insan &amp; Pengambilan</p>
                 </div>
                 <div class="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 text-center">
-                    <span class="text-2xl">💼</span>
+                    <span class="text-2xl">⚖️</span>
                     <h5 class="text-sm font-bold text-white mt-1">Lekir</h5>
-                    <p class="text-[11px] text-slate-400">Kewangan &amp; Invois</p>
+                    <p class="text-[11px] text-slate-400">Kewangan &amp; e-Invois</p>
                 </div>
             </div>
 
@@ -920,7 +920,7 @@
                     Mengapa Pilih Open Source?
                 </h2>
                 <p class="text-base sm:text-xl text-slate-600 mt-3">
-                    Perbandingan jujur antara OpenKuasa dengan platform perisian proprietari langganan tertutup.
+                    Perbandingan jujur antara KerjaAI dengan platform perisian proprietari langganan tertutup.
                 </p>
             </div>
 
@@ -930,7 +930,7 @@
                         <tr>
                             <th class="py-4 px-6">Perkara</th>
                             <th class="py-4 px-6 text-indigo-700 font-extrabold bg-indigo-50/70 border-x border-indigo-100">
-                                OpenKuasa (Self-Hosted)
+                                KerjaAI (Self-Hosted)
                             </th>
                             <th class="py-4 px-6 text-slate-500">SaaS Tertutup Lain</th>
                         </tr>
@@ -987,7 +987,7 @@
                     Jawapan Terus
                 </span>
                 <h2 class="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900 mt-3">
-                    Soalan Lazim Berkenaan OpenKuasa
+                    Soalan Lazim Berkenaan KerjaAI
                 </h2>
                 <p class="text-slate-600 text-sm sm:text-base mt-2">
                     Segala yang perlu anda ketahui tentang pelaksanaan, privasi dan kelebihan platform kami.
@@ -1017,12 +1017,12 @@
          ============================================== -->
     <section class="bg-black text-white py-20 border-t border-slate-900 relative overflow-hidden">
         <div class="max-w-5xl mx-auto px-6 text-center relative z-10">
-            <img src="{{ asset('images/banner.png') }}" alt="Kerja AI — Sistem Berasaskan OpenKuasa" class="h-16 sm:h-24 w-auto max-w-[680px] sm:max-w-lg mx-auto mb-8 object-contain">
+            <img src="{{ asset('images/banner.png') }}" alt="KerjaAI — Sistem Berasaskan AI" class="h-16 sm:h-24 w-auto max-w-[680px] sm:max-w-lg mx-auto mb-8 object-contain">
             <h2 class="text-3xl sm:text-5xl font-black tracking-tight text-white max-w-3xl mx-auto leading-tight">
                 Miliki Platform Perniagaan Anda Sendiri Hari Ini.
             </h2>
             <p class="text-slate-400 text-base sm:text-lg max-w-2xl mx-auto mt-4 leading-relaxed">
-                Tiada lagi data yang tersangkut dalam pelayan pihak ketiga. Pasang OpenKuasa dan kendalikan perniagaan anda dengan kebebasan sumber terbuka sepenuhnya.
+                Tiada lagi data yang tersangkut dalam pelayan pihak ketiga. Pasang KerjaAI dan kendalikan perniagaan anda dengan kebebasan sumber terbuka sepenuhnya.
             </p>
 
             <div class="flex flex-wrap items-center justify-center gap-4 mt-8">
@@ -1048,35 +1048,36 @@
             <div class="col-span-2">
                 <div class="flex items-center gap-2.5">
                     <div class="w-8 h-8 rounded-lg overflow-hidden flex items-center justify-center bg-white/10 p-0.5">
-                        <img src="{{ asset('images/logo.png') }}" alt="OpenKuasa Logo" class="w-full h-full object-cover rounded-md">
+                        <img src="{{ asset('images/logo.png') }}" alt="KerjaAI Logo" class="w-full h-full object-cover rounded-md">
                     </div>
-                    <span class="font-extrabold text-base text-white">Open<span class="text-indigo-400">Kuasa</span></span>
+                    <span class="font-extrabold text-base text-white">Kerja<span class="text-indigo-400">AI</span></span>
                 </div>
                 <p class="text-slate-500 mt-3 text-xs leading-relaxed max-w-sm">
                     Platform Perniagaan AI Sumber Terbuka Pertama Malaysia berasaskan Laravel 13 &amp; PostgreSQL. Dicipta khas untuk usahawan yang mementingkan privasi data, kepatuhan tempatan dan kawalan penuh.
                 </p>
                 <p class="text-slate-600 mt-4 text-[11px]">
-                    &copy; {{ date('Y') }} OpenKuasa Community. Hak cipta terpelihara.
+                    &copy; {{ date('Y') }} KerjaAI Community. Hak cipta terpelihara.
                 </p>
             </div>
 
             <div>
-                <h5 class="text-xs font-bold text-white uppercase tracking-wider mb-3">Modul Teras</h5>
+                <h5 class="text-xs font-bold text-white uppercase tracking-wider mb-3">5 Bersaudara</h5>
                 <ul class="space-y-2">
-                    <li><a href="#ekosistem" class="hover:text-white transition">Tuah (C-Suite AI)</a></li>
-                    <li><a href="#ekosistem" class="hover:text-white transition">Jebat (Iklan Pintar)</a></li>
-                    <li><a href="#ekosistem" class="hover:text-white transition">Kasturi (CRM &amp; Urus Niaga)</a></li>
-                    <li><a href="#ekosistem" class="hover:text-white transition">Lekiu (HR &amp; Slip Gaji)</a></li>
+                    <li><a href="#ekosistem" class="hover:text-white transition">Tuah (Pusat Kawalan C-Suite)</a></li>
+                    <li><a href="#ekosistem" class="hover:text-white transition">Jebat (Pemasaran &amp; Studio Iklan)</a></li>
+                    <li><a href="#ekosistem" class="hover:text-white transition">Kasturi (Jualan &amp; Katalog Produk)</a></li>
+                    <li><a href="#ekosistem" class="hover:text-white transition">Lekiu (Modal Insan &amp; Pengambilan)</a></li>
+                    <li><a href="#ekosistem" class="hover:text-white transition">Lekir (Kewangan &amp; e-Invois LHDN)</a></li>
                 </ul>
             </div>
 
             <div>
-                <h5 class="text-xs font-bold text-white uppercase tracking-wider mb-3">Operasi &amp; Cukai</h5>
+                <h5 class="text-xs font-bold text-white uppercase tracking-wider mb-3">Pematuhan Tempatan</h5>
                 <ul class="space-y-2">
-                    <li><a href="#ekosistem" class="hover:text-white transition">Lekir (Kewangan &amp; Lejar)</a></li>
-                    <li><a href="#ekosistem" class="hover:text-white transition">Lekiu (Pengambilan Staf)</a></li>
                     <li><a href="#ekosistem" class="hover:text-white transition">e-Invois MyInvois LHDN</a></li>
-                    <li><a href="#ekosistem" class="hover:text-white transition">Caruman KWSP / SOCSO</a></li>
+                    <li><a href="#ekosistem" class="hover:text-white transition">Cukai Perkhidmatan SST (6% &amp; 8%)</a></li>
+                    <li><a href="#ekosistem" class="hover:text-white transition">Caruman KWSP (12%/13% &amp; 11%)</a></li>
+                    <li><a href="#ekosistem" class="hover:text-white transition">PERKESO, EIS &amp; PCB LHDN</a></li>
                 </ul>
             </div>
 
@@ -1166,7 +1167,7 @@
             {
                 id: 'jebat',
                 name: 'Jebat',
-                role: 'Pemasaran & Iklan',
+                role: 'Pemasaran & Studio Iklan',
                 color: '#2563eb', // Blue
                 hair: '#0f172a',
                 deskX: 110,
@@ -1181,19 +1182,19 @@
                 dir: 1,
                 walkFrame: 0,
                 item: null,
-                bubble: 'Magic Ads ROAS 4.6x! 🎯',
+                bubble: 'Jana salinan di Ad Studio! ✨',
                 bubbleTimer: 140,
                 bubbles: [
+                    'Jana salinan di Ad Studio! ✨',
                     'Magic Ads ROAS 4.6x! 🎯',
-                    'Optimumkan kempen FB & IG',
-                    'Copywriting baru bersiaran ✨',
-                    '35 prospek baru hari ini'
+                    'Kempen Meta & TikTok dioptimumkan',
+                    'Iklan produk & kerjaya sedia'
                 ]
             },
             {
                 id: 'kasturi',
                 name: 'Kasturi',
-                role: 'CRM & Jualan',
+                role: 'Jualan & Katalog Produk',
                 color: '#059669', // Emerald
                 hair: '#451a03',
                 deskX: 250,
@@ -1211,16 +1212,16 @@
                 bubble: null,
                 bubbleTimer: 0,
                 bubbles: [
-                    'Prospek WhatsApp masuk! 💬',
+                    'Katalog produk dikemas kini 📦',
                     'Closing urus niaga RM24k 🤝',
-                    'Update corong deals CRM',
-                    'Sebut harga dihantar segera'
+                    'Pintasan jana iklan ke Jebat 📢',
+                    'Urus niaga won tukar ke invois'
                 ]
             },
             {
                 id: 'lekiu',
                 name: 'Lekiu',
-                role: 'HR & Slip Gaji',
+                role: 'Modal Insan & Pengambilan',
                 color: '#0891b2', // Cyan
                 hair: '#312e81',
                 deskX: 520,
@@ -1239,15 +1240,15 @@
                 bubbleTimer: 0,
                 bubbles: [
                     'Slip gaji KWSP/PERKESO siap ✓',
+                    'Iklan jawatan kosong disiarkan 💼',
                     'Semak jam masuk GPS staf 📍',
-                    'Kelulusan cuti disahkan',
-                    'Caruman EIS & PCB beres'
+                    'Tapisan resume calon Lekiu Hire'
                 ]
             },
             {
                 id: 'lekir',
                 name: 'Lekir',
-                role: 'Kewangan & Invois',
+                role: 'Kewangan & e-Invois LHDN',
                 color: '#d97706', // Amber
                 hair: '#475569',
                 deskX: 660,
@@ -1266,9 +1267,9 @@
                 bubbleTimer: 0,
                 bubbles: [
                     'e-Invois LHDN disahkan! 🧾',
-                    'Kira lejar am perniagaan',
-                    'Resit shoebox diproses 📸',
-                    'Penyata cukai SST siap'
+                    'Lejar am berimbang: Debit = Kredit ⚖️',
+                    'Sebut harga ditukar ke invois',
+                    'Penyata SST & resit siap diproses'
                 ]
             }
         ];
@@ -1281,7 +1282,7 @@
             targetY: 130,
             timer: 180,
             speed: 1.6,
-            bubble: 'Tuah AI: Semua sistem beroperasi lancar ⚡',
+            bubble: 'Tuah AI: 5 Bersaudara bersepadu 100% ⚡',
             bubbleTimer: 180
         };
 
@@ -1312,7 +1313,7 @@
             }
             if (!hoveredWorker) {
                 const botDist = Math.hypot(tuahBot.x - mx, tuahBot.y - my);
-                if (botDist < 30) hoveredWorker = { name: 'Tuah AI Bot', role: 'C-Suite AI Co-Pilot', bubble: 'Tanya saya sebarang analisis perniagaan!' };
+                if (botDist < 30) hoveredWorker = { name: 'Tuah AI', role: 'Pusat Kawalan & Co-Pilot C-Suite', bubble: 'Tanya saya sebarang analisis perniagaan 5 Bersaudara!' };
             }
         });
 
@@ -1347,10 +1348,10 @@
             // Semak klik pada Tuah AI Bot
             const botDist = Math.hypot(tuahBot.x - mx, tuahBot.y - my);
             if (botDist < 40) {
-                tuahBot.bubble = 'Tuah AI: Memproses telemetri sistem tempatan ⚡';
+                tuahBot.bubble = 'Tuah AI: Memproses telemetri sistem 5 Bersaudara ⚡';
                 tuahBot.bubbleTimer = 160;
                 for (let k = 0; k < 16; k++) addSparkle(tuahBot.x, tuahBot.y, '#38bdf8');
-                setStatus('🧠 Tuah AI Co-Pilot: Bersedia menjawab soalan suara & teks pengurusan.');
+                setStatus('🧠 Tuah AI Co-Pilot: Pusat arahan pintar 5 Bersaudara sedia menjawab soalan pengurusan.');
             }
         });
 
@@ -1395,7 +1396,7 @@
 
         if (btnTuah) {
             btnTuah.addEventListener('click', function () {
-                setStatus('✨ Tuah AI mengimbas seluruh data perniagaan (Jebat, Kasturi, Lekiu, Lekir).');
+                setStatus('✨ Tuah AI mengimbas seluruh data perniagaan 5 Bersaudara (Jebat, Kasturi, Lekiu, Lekir).');
                 tuahBot.targetX = 430;
                 tuahBot.targetY = 110;
                 tuahBot.bubble = 'Tuah AI: 5 Bersaudara bersepadu 100% ⚡';
@@ -1563,7 +1564,7 @@
             ctx.strokeRect(380, 5, 100, 16);
             ctx.fillStyle = '#67e8f9';
             ctx.font = 'bold 8px monospace';
-            ctx.fillText('⚡ OPENKUASA HQ', 390, 16);
+            ctx.fillText('⚡ KERJAAI HQ', 390, 16);
 
             // Skirting Dinding Kayu
             ctx.fillStyle = '#334155';

@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>{{ $title ?? 'OpenKuasa' }} — Sistem Operasi Perniagaan Bersepadu</title>
+    <title>{{ $title ?? 'KerjaAI' }} — Sistem Operasi Perniagaan Bersepadu</title>
     <link rel="icon" type="image/x-icon" href="{{ asset('favicon.ico') }}">
     <link rel="icon" type="image/png" sizes="32x32" href="{{ asset('favicon-32x32.png') }}">
     <link rel="apple-touch-icon" sizes="180x180" href="{{ asset('apple-touch-icon.png') }}">
@@ -39,11 +39,11 @@
             <!-- Logo & Brand Header with Toggle Collapse -->
             <div class="h-16 flex items-center border-b border-slate-200 dark:border-slate-800 transition-all duration-200" :class="collapsed ? 'justify-center px-2' : 'justify-between px-4'">
                 <div class="flex items-center gap-3 overflow-hidden">
-                    <button @click="toggleSidebar()" type="button" class="w-9 h-9 flex-shrink-0 rounded-xl overflow-hidden flex items-center justify-center shadow-sm hover:scale-105 transition cursor-pointer" :title="collapsed ? 'Klik untuk besarkan menu' : 'OpenKuasa — Klik untuk kecilkan menu'">
-                        <img src="{{ asset('images/logo.png') }}" alt="Logo" class="w-full h-full object-cover">
+                    <button @click="toggleSidebar()" type="button" class="w-9 h-9 flex-shrink-0 rounded-xl overflow-hidden flex items-center justify-center shadow-sm hover:scale-105 transition cursor-pointer" :title="collapsed ? 'Klik untuk besarkan menu' : 'KerjaAI — Klik untuk kecilkan menu'">
+                        <img src="{{ asset('images/logo.png') }}" alt="KerjaAI Logo" class="w-full h-full object-cover">
                     </button>
                     <div x-show="!collapsed" class="transition-all duration-150 overflow-hidden whitespace-nowrap">
-                        <h1 class="font-bold text-base leading-tight tracking-tight">Open<span class="text-indigo-600 dark:text-indigo-400">Kuasa</span></h1>
+                        <h1 class="font-bold text-base leading-tight tracking-tight">Kerja<span class="text-indigo-600 dark:text-indigo-400">AI</span></h1>
                         <span class="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Business Platform</span>
                     </div>
                 </div>
@@ -59,9 +59,15 @@
                 <div class="relative">
                     <button @click="open = !open" type="button" :title="collapsed ? ('Organisasi: ' + '{{ addslashes($currentOrg->name ?? 'Perniagaan') }}') : ''" class="w-full flex items-center rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/80 transition text-left text-xs font-medium" :class="collapsed ? 'justify-center p-2' : 'justify-between p-2.5'">
                         <div class="truncate flex items-center gap-2" :class="collapsed ? 'justify-center' : ''">
+                            @if(!empty($currentOrg->logo_url))
+                            <span class="w-6 h-6 rounded-md overflow-hidden bg-white flex items-center justify-center flex-shrink-0 border border-slate-200 dark:border-slate-700 p-0.5">
+                                <img src="{{ $currentOrg->logo_url }}" alt="Logo" class="w-full h-full object-contain">
+                            </span>
+                            @else
                             <span class="w-6 h-6 rounded-md bg-indigo-50 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 flex items-center justify-center text-[10px] font-bold flex-shrink-0">
                                 {{ strtoupper(substr($currentOrg->name ?? 'P', 0, 1)) }}
                             </span>
+                            @endif
                             <div x-show="!collapsed" class="truncate">
                                 <span class="block text-[10px] text-slate-600 dark:text-slate-400 uppercase font-semibold">Organisasi Semasa</span>
                                 <span class="block font-semibold text-slate-800 dark:text-slate-200 truncate">{{ $currentOrg->name ?? 'Perniagaan Saya' }}</span>

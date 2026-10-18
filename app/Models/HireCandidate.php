@@ -21,7 +21,13 @@ class HireCandidate extends Model
         'name',
         'email',
         'phone',
+        'birth_date',
+        'address',
         'notes',
+    ];
+
+    protected $casts = [
+        'birth_date' => 'date',
     ];
 
     public function applications(): HasMany

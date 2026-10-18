@@ -466,7 +466,7 @@ class PeopleController extends Controller
         $netPayFormatted = number_format($payslip->net_pay, 2);
         $grossFormatted = number_format($payslip->gross_pay, 2);
         $deductionsFormatted = number_format($totalDeductions, 2);
-        $orgName = $currentOrg->name ?? 'OpenKuasa HR';
+        $orgName = $currentOrg->name ?? 'KerjaAI HR';
 
         $waText = "📄 *PENYATA GAJI (PAYSLIP) BULAN " . strtoupper($monthName) . " {$payrollRun->period_year}*\n"
             . "🏢 *Majikan:* {$orgName}\n\n"
@@ -478,7 +478,7 @@ class PeopleController extends Controller
             . "💵 *GAJI BERSIH DITERIMA:* *RM {$netPayFormatted}*\n\n"
             . "Pautan Slip Gaji Rasmi (PDF):\n"
             . route('people.payroll.payslip', $payslip->id) . "\n\n"
-            . "Penyata ini dijana secara rasmi melalui sistem OpenKuasa Lekiu HR. Terima kasih!";
+            . "Penyata ini dijana secara rasmi melalui sistem KerjaAI Lekiu HR. Terima kasih!";
 
         $whatsappUrl = "https://wa.me/?text=" . rawurlencode($waText);
 

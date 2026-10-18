@@ -65,12 +65,19 @@
     <!-- Official Invoice Document Container -->
     <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-8 shadow-sm space-y-8 print:border-none print:shadow-none print:p-0">
         <!-- Header: Org Info & Invoice Meta -->
-        <div class="flex flex-col sm:flex-row justify-between gap-6 pb-6 border-b border-slate-100 dark:border-slate-800">
-            <div>
-                <h2 class="text-xl font-bold text-slate-900 dark:text-white">{{ $currentOrg->name ?? 'Syarikat' }}</h2>
-                <p class="text-xs text-slate-500 mt-1">Platform OpenKuasa &bull; PKS Berdaftar</p>
+        <div class="flex flex-col sm:flex-row justify-between items-start gap-6 pb-6 border-b border-slate-100 dark:border-slate-800">
+            <div class="space-y-3">
+                @if(!empty($currentOrg->logo_url))
+                <div class="h-14 max-w-[220px] flex items-center">
+                    <img src="{{ $currentOrg->logo_url }}" alt="{{ $currentOrg->name ?? 'Logo Syarikat' }}" class="max-h-14 max-w-full object-contain">
+                </div>
+                @endif
+                <div>
+                    <h2 class="text-xl font-bold text-slate-900 dark:text-white">{{ $currentOrg->name ?? 'Syarikat' }}</h2>
+                    <p class="text-xs text-slate-500 mt-0.5">Platform KerjaAI &bull; PKS Berdaftar</p>
+                </div>
                 @if($invoice->e_invoice_uuid)
-                <div class="mt-3 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 text-[11px] font-mono text-indigo-700 dark:text-indigo-300">
+                <div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 text-[11px] font-mono text-indigo-700 dark:text-indigo-300">
                     <span>LHDN MyInvois UUID:</span>
                     <strong>{{ $invoice->e_invoice_uuid }}</strong>
                 </div>

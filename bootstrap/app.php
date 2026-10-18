@@ -27,6 +27,10 @@ return Application::configure(basePath: dirname(__DIR__))
             \App\Http\Middleware\SetLocale::class,
         ]);
 
+        $middleware->validateCsrfTokens(except: [
+            'careers/*/parse-resume',
+        ]);
+
         $middleware->alias([
             'tenant' => \App\Http\Middleware\SetCurrentOrganization::class,
             'locale' => \App\Http\Middleware\SetLocale::class,

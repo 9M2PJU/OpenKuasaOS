@@ -58,7 +58,7 @@
                     No. Pendaftaran Syarikat (SSM): 202401089234 (1523411-X) &bull; Majikan Berdaftar
                 </p>
                 <p class="text-[11px] text-slate-500 leading-tight">
-                    Tingkat 12, Menara OpenKuasa, Jalan Sultan Ismail, 50250 Kuala Lumpur, Malaysia
+                    Tingkat 12, Menara KerjaAI, Jalan Sultan Ismail, 50250 Kuala Lumpur, Malaysia
                 </p>
             </div>
 
@@ -275,7 +275,7 @@
                 <div class="space-y-1">
                     <p class="text-[11px] font-bold uppercase tracking-wider text-slate-600">Pengesahan Pihak Pengurusan & HR:</p>
                     <p class="text-[11px] text-slate-500 leading-relaxed">
-                        Penyata ini dijana secara berkomputer oleh OpenKuasa Lekiu HR & Attendance Engine.<br>
+                        Penyata ini dijana secara berkomputer oleh KerjaAI Lekiu HR & Attendance Engine.<br>
                         Sah laku tanpa tandatangan basah mengikut peruntukan Akta Tandatangan Digital 1997.
                     </p>
                 </div>

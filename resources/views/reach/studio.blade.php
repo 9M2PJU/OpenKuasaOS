@@ -201,6 +201,28 @@
                                     <div class="text-xs leading-relaxed text-slate-800 dark:text-slate-200 whitespace-pre-line font-mono select-all" x-text="generatedCopy.body"></div>
                                 </div>
 
+                                <!-- Career Application Portal Link Card if Job Ad -->
+                                <template x-if="generatedCopy.apply_url">
+                                    <div class="p-3.5 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 flex items-center justify-between gap-3">
+                                        <div class="min-w-0">
+                                            <span class="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase flex items-center gap-1.5">
+                                                <span>🔗</span>
+                                                <span>Pautan Rasmi Calon (Auto-Saring AI)</span>
+                                            </span>
+                                            <a :href="generatedCopy.apply_url" target="_blank" class="text-xs font-mono font-medium text-emerald-900 dark:text-emerald-200 hover:underline truncate block mt-0.5" x-text="generatedCopy.apply_url"></a>
+                                        </div>
+                                        <div class="flex items-center gap-1.5 shrink-0">
+                                            <a :href="generatedCopy.apply_url" target="_blank" class="px-2.5 py-1.5 rounded-xl border border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 text-xs font-semibold hover:bg-emerald-100/50 dark:hover:bg-emerald-900/50 transition">
+                                                Buka &rarr;
+                                            </a>
+                                            <button type="button" @click="copyLink(generatedCopy.apply_url)" class="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition">
+                                                <span x-show="!linkCopied">Salin Link</span>
+                                                <span x-show="linkCopied">✓ Disalin!</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </template>
+
                                 <!-- Call To Action & Hashtags -->
                                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                     <div class="p-3 rounded-2xl bg-indigo-50/60 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/60 text-xs">
@@ -247,7 +269,16 @@ function jebatAdStudio() {
         promoText: '',
         isLoading: false,
         copied: false,
+        linkCopied: false,
         generatedCopy: null,
+
+        copyLink(url) {
+            if (!url) return;
+            navigator.clipboard.writeText(url).then(() => {
+                this.linkCopied = true;
+                setTimeout(() => this.linkCopied = false, 2500);
+            });
+        },
 
         get currentProduct() {
             return productsData.find(p => p.id === this.productId) || productsData[0] || null;

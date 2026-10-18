@@ -222,7 +222,7 @@
             <div class="space-y-12">
                 <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Disahkan Oleh</div>
                 <div class="border-b border-slate-300 dark:border-slate-700 w-3/4 mx-auto"></div>
-                <div class="text-slate-500 text-[10px]">Bendahara / Pengurus Kewangan</div>
+                <div class="text-slate-500 text-[10px]">Lekir / Pengurus Kewangan</div>
             </div>
             <div class="space-y-12">
                 <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Diterima / Disemak</div>

@@ -85,13 +85,22 @@
     <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-8 sm:p-12 shadow-sm space-y-8 print:border-none print:shadow-none print:p-0">
         <!-- Header -->
         <div class="flex flex-col sm:flex-row justify-between items-start gap-4 border-b border-slate-200 dark:border-slate-800 pb-6">
-            <div>
-                <div class="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-black text-xl tracking-tight uppercase">
-                    <span>⚡</span>
-                    <span>{{ $currentOrg->name ?? 'OpenKuasa Enterprise' }}</span>
+            <div class="space-y-3">
+                @if(!empty($currentOrg->logo_url))
+                <div class="h-14 max-w-[220px] flex items-center">
+                    <img src="{{ $currentOrg->logo_url }}" alt="{{ $currentOrg->name ?? 'Logo Syarikat' }}" class="max-h-14 max-w-full object-contain">
                 </div>
-                <div class="text-xs text-slate-500 mt-1">Platform Perniagaan & Pengurusan Operasi Bersepadu Malaysia</div>
-                <h1 class="text-2xl font-black tracking-tight text-slate-900 dark:text-white mt-4 uppercase">
+                @endif
+                <div>
+                    <div class="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-black text-xl tracking-tight uppercase">
+                        @if(empty($currentOrg->logo_url))
+                        <span>⚡</span>
+                        @endif
+                        <span>{{ $currentOrg->name ?? 'KerjaAI Enterprise' }}</span>
+                    </div>
+                    <div class="text-xs text-slate-500 mt-1">Platform Perniagaan & Pengurusan Operasi Bersepadu Malaysia</div>
+                </div>
+                <h1 class="text-2xl font-black tracking-tight text-slate-900 dark:text-white mt-2 uppercase">
                     Sebutharga / Quotation
                 </h1>
             </div>
@@ -227,7 +236,7 @@
             <div class="space-y-12">
                 <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Disediakan Oleh</div>
                 <div class="border-b border-slate-300 dark:border-slate-700 w-3/4 mx-auto"></div>
-                <div class="text-slate-600 dark:text-slate-300 font-semibold">{{ $currentOrg->name ?? 'OpenKuasa Enterprise' }}</div>
+                <div class="text-slate-600 dark:text-slate-300 font-semibold">{{ $currentOrg->name ?? 'KerjaAI Enterprise' }}</div>
             </div>
 
             <div class="space-y-12">
