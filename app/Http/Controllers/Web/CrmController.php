@@ -8,6 +8,7 @@ use App\Models\AgentRun;
 use App\Models\CrmAppointment;
 use App\Models\CrmContact;
 use App\Models\CrmDeal;
+use App\Models\Product;
 use App\Services\Tenancy\OrganizationContext;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -407,5 +408,126 @@ class CrmController extends Controller
         $appointment->delete();
 
         return back()->with('success', "Temujanji '{$appointment->title}' telah dipadam.");
+    }
+
+    public function products(Request $request)
+    {
+        $orgId = OrganizationContext::id();
+
+        // Seed initial starter products if none exist
+        if (Product::where('org_id', $orgId)->count() === 0 && $orgId) {
+            Product::create([
+                'org_id' => $orgId,
+                'name' => 'Koleksi Serum Wajah Glow 30ml',
+                'sku' => 'SKU-GLOW-01',
+                'category' => 'Produk Fizikal',
+                'price' => 89.00,
+                'cost_price' => 28.00,
+                'stock' => 150,
+                'description' => 'Serum wajah pelembap harian kaya dengan Vitamin C dan Niacinamide.',
+                'usp' => 'Formula herba semulajadi mencerahkan kulit kusam seawal 7 hari tanpa bahan kimia terlarang.',
+                'target_audience' => 'Wanita bekerjaya & suri rumah 20 - 45 tahun',
+                'status' => 'active',
+            ]);
+
+            Product::create([
+                'org_id' => $orgId,
+                'name' => 'Pakej Langganan Perisian Perakaunan SME',
+                'sku' => 'SRV-ACC-01',
+                'category' => 'Perkhidmatan & SaaS',
+                'price' => 299.00,
+                'cost_price' => 45.00,
+                'stock' => 999,
+                'description' => 'Langganan bulanan sistem automasi invois, payroll, dan penyata cukai.',
+                'usp' => 'Jimat 15 jam sebulan dengan e-Invois LHDN dan penyata untung rugi automatik bersesuaian dengan Akta Cukai Malaysia.',
+                'target_audience' => 'Pengasas syarikat PKS, peniaga Enterprise & Sdn Bhd',
+                'status' => 'active',
+            ]);
+        }
+
+        $query = Product::where('org_id', $orgId)->latest();
+
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                  ->orWhere('sku', 'like', "%{$search}%")
+                  ->orWhere('category', 'like', "%{$search}%");
+            });
+        }
+
+        if ($request->filled('category') && $request->category !== 'all') {
+            $query->where('category', $request->category);
+        }
+
+        $products = $query->paginate(12);
+        $totalProducts = Product::where('org_id', $orgId)->count();
+        $totalStock = (int) Product::where('org_id', $orgId)->sum('stock');
+        $catalogValue = (float) Product::where('org_id', $orgId)->selectRaw('SUM(price * stock) as total')->value('total');
+
+        return view('crm.products', compact('products', 'totalProducts', 'totalStock', 'catalogValue'));
+    }
+
+    public function storeProduct(Request $request)
+    {
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'sku' => ['nullable', 'string', 'max:100'],
+            'category' => ['required', 'string', 'max:100'],
+            'price' => ['required', 'numeric', 'min:0'],
+            'cost_price' => ['nullable', 'numeric', 'min:0'],
+            'stock' => ['nullable', 'integer', 'min:0'],
+            'description' => ['nullable', 'string'],
+            'usp' => ['nullable', 'string'],
+            'target_audience' => ['nullable', 'string', 'max:255'],
+            'status' => ['required', 'string', 'in:active,draft,archived'],
+        ], [
+            'name.required' => 'Nama produk atau perkhidmatan diperlukan.',
+            'category.required' => 'Kategori produk diperlukan.',
+            'price.required' => 'Harga jualan diperlukan.',
+        ]);
+
+        $orgId = OrganizationContext::id();
+
+        Product::create(array_merge($validated, [
+            'org_id' => $orgId,
+            'cost_price' => $validated['cost_price'] ?? 0.00,
+            'stock' => $validated['stock'] ?? 0,
+        ]));
+
+        return back()->with('success', "Produk '{$validated['name']}' berjaya didaftarkan ke dalam katalog.");
+    }
+
+    public function updateProduct(Request $request, $id)
+    {
+        $orgId = OrganizationContext::id();
+        $product = Product::where('org_id', $orgId)->findOrFail($id);
+
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'sku' => ['nullable', 'string', 'max:100'],
+            'category' => ['required', 'string', 'max:100'],
+            'price' => ['required', 'numeric', 'min:0'],
+            'cost_price' => ['nullable', 'numeric', 'min:0'],
+            'stock' => ['nullable', 'integer', 'min:0'],
+            'description' => ['nullable', 'string'],
+            'usp' => ['nullable', 'string'],
+            'target_audience' => ['nullable', 'string', 'max:255'],
+            'status' => ['required', 'string', 'in:active,draft,archived'],
+        ]);
+
+        $product->update($validated);
+
+        return back()->with('success', "Produk '{$product->name}' berjaya dikemas kini.");
+    }
+
+    public function deleteProduct($id)
+    {
+        $orgId = OrganizationContext::id();
+        $product = Product::where('org_id', $orgId)->findOrFail($id);
+        $name = $product->name;
+        $product->delete();
+
+        return back()->with('success', "Produk '{$name}' telah dipadam dari katalog.");
     }
 }

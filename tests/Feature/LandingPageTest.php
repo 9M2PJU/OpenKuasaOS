@@ -19,13 +19,12 @@ class LandingPageTest extends TestCase
 
         $response->assertStatus(200);
         $response->assertSee('OpenKuasa');
-        $response->assertDontSee('OpenKuasaOS');
+        $response->assertSee('https://github.com/engkuhelmy/OpenKuasaOS');
         $response->assertSee('Tuah AI');
         $response->assertSee('Jebat');
         $response->assertSee('Kasturi');
         $response->assertSee('Lekiu');
         $response->assertSee('Lekir');
-        $response->assertSee('Bendahara');
         $response->assertSee('Log Masuk');
         $response->assertSee('Mula Percuma');
     }

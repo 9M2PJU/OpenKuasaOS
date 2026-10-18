@@ -17,21 +17,21 @@
             </p>
         </div>
         <div class="flex items-center gap-2.5 flex-wrap">
+            <a href="{{ route('hire.index') }}" class="px-3.5 py-2 rounded-xl border border-purple-500/30 bg-purple-500/10 hover:bg-purple-500/20 text-xs font-semibold text-purple-600 dark:text-purple-400 shadow-sm transition flex items-center gap-1.5">
+                <span>💼</span>
+                <span>Pengambilan Staf</span>
+            </a>
             <a href="{{ route('people.attendance') }}" class="px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800/80 text-xs font-semibold text-slate-700 dark:text-slate-300 shadow-sm transition">
-                Punch Card Kehadiran
+                Punch Card
             </a>
             <a href="{{ route('people.leave') }}" class="px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800/80 text-xs font-semibold text-slate-700 dark:text-slate-300 shadow-sm transition">
-                Permohonan Cuti
+                Cuti
             </a>
             <a href="{{ route('people.employees') }}" class="px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800/80 text-xs font-semibold text-slate-700 dark:text-slate-300 shadow-sm transition">
-                Direktori Pekerja
-            </a>
-            <a href="{{ route('people.announcements') }}" class="px-3.5 py-2 rounded-xl border border-blue-200 dark:border-blue-900/60 bg-blue-50/50 dark:bg-blue-950/40 hover:bg-blue-100/50 dark:hover:bg-blue-900/60 text-xs font-semibold text-blue-700 dark:text-blue-300 shadow-sm transition flex items-center gap-1.5">
-                <svg class="w-3.5 h-3.5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z"/></svg>
-                <span>Pengumuman</span>
+                Direktori
             </a>
             <a href="{{ route('people.payroll') }}" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-sm transition flex items-center gap-1.5">
-                <span>Enjin Gaji (Payroll)</span>
+                <span>Gaji (Payroll)</span>
                 <span>&rarr;</span>
             </a>
         </div>

@@ -1,4 +1,4 @@
-@extends('layouts.app', ['title' => 'Bendahara — Rekod Perbelanjaan & Modal (LHDN)'])
+@extends('layouts.app', ['title' => 'Lekir — Rekod Perbelanjaan & Modal (LHDN)'])
 
 @section('content')
 <div class="max-w-4xl mx-auto space-y-6" x-data="{
@@ -25,7 +25,7 @@
     <div class="flex items-center justify-between">
         <div>
             <div class="flex items-center gap-2 text-xs text-slate-400 mb-1">
-                <a href="{{ route('finance.index') }}" class="hover:underline">Bendahara</a>
+                <a href="{{ route('finance.index') }}" class="hover:underline">Lekir</a>
                 <span>&rsaquo;</span>
                 <a href="{{ route('finance.expenses') }}" class="hover:underline">Perbelanjaan & Belian</a>
                 <span>&rsaquo;</span>

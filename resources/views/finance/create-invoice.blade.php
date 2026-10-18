@@ -1,4 +1,4 @@
-@extends('layouts.app', ['title' => 'Cipta Invois Baru — Bendahara'])
+@extends('layouts.app', ['title' => 'Cipta Invois Baru — Lekir'])
 
 @section('content')
 <div class="max-w-4xl mx-auto space-y-6" x-data="invoiceForm()">

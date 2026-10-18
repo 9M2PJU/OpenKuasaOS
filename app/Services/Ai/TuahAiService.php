@@ -40,7 +40,7 @@ class TuahAiService
                 'ollama_url' => $defaultOllamaUrl,
                 'ollama_model' => $defaultOllamaModel,
                 'model' => $defaultProvider === 'ollama' ? $defaultOllamaModel : $defaultGeminiModel,
-                'system_prompt' => "Anda adalah Tuah AI, penasihat dan pembantu operasi perniagaan PKS Malaysia bagi platform OpenKuasa. Anda fasih menyelaraskan modul Bendahara (Kewangan), Lekiu (Kakitangan), Kasturi (CRM), Lekir (Pengrekrutan), dan Jebat (Pemasaran).
+                'system_prompt' => "Anda adalah Tuah AI, penasihat dan pembantu operasi perniagaan PKS Malaysia bagi platform OpenKuasa. Anda fasih menyelaraskan modul Lekir (Kewangan & Invois), Lekiu (Modal Insan & Pengambilan Staf), Kasturi (Jualan, CRM & Produk), dan Jebat (Iklan & Pemasaran).
 
 PANDUAN FORMAT MAKLUM BALAS:
 - Formatkan jawapan anda dengan gaya tulisan yang kemas, profesional, dan mudah dibaca.
@@ -111,9 +111,9 @@ PANDUAN FORMAT MAKLUM BALAS:
     }
 
     /**
-     * Pull all models dynamically from Google Gemini API without restrictions.
+     * Pull all models dynamically from Google Gemini API with connection status.
      */
-    public function fetchGeminiModels(?string $apiKey = null): array
+    public function fetchGeminiModelsWithDetails(?string $apiKey = null): array
     {
         $key = $apiKey ?: config('services.gemini.api_key');
 
@@ -133,7 +133,11 @@ PANDUAN FORMAT MAKLUM BALAS:
         ];
 
         if (empty($key)) {
-            return $fallbackModels;
+            return [
+                'models' => $fallbackModels,
+                'live' => false,
+                'message' => 'Kunci API Gemini tidak dibekalkan. Senarai model rasmi Google dimuatkan sebagai rujukan.',
+            ];
         }
 
         try {
@@ -149,20 +153,42 @@ PANDUAN FORMAT MAKLUM BALAS:
                     ->toArray();
 
                 if (!empty($pulled)) {
-                    return $pulled;
+                    return [
+                        'models' => $pulled,
+                        'live' => true,
+                        'message' => 'Berjaya menarik ' . count($pulled) . ' model daripada Google Gemini API!',
+                    ];
                 }
             }
+
+            return [
+                'models' => $fallbackModels,
+                'live' => false,
+                'message' => "Google Gemini API membalas status HTTP {$response->status()}. Senarai model rasmi dimuatkan.",
+            ];
         } catch (\Throwable $e) {
             Log::info("Fetch Gemini Models Notice: " . $e->getMessage());
-        }
 
-        return $fallbackModels;
+            return [
+                'models' => $fallbackModels,
+                'live' => false,
+                'message' => 'Tidak dapat menyambung ke Google Gemini API: ' . $e->getMessage(),
+            ];
+        }
     }
 
     /**
-     * Pull all models installed on the Ollama server.
+     * Pull all models dynamically from Google Gemini API without restrictions.
      */
-    public function fetchOllamaModels(?string $url = null): array
+    public function fetchGeminiModels(?string $apiKey = null): array
+    {
+        return $this->fetchGeminiModelsWithDetails($apiKey)['models'];
+    }
+
+    /**
+     * Pull all models installed on the Ollama server with detailed status.
+     */
+    public function fetchOllamaModelsWithDetails(?string $url = null): array
     {
         $ollamaUrl = rtrim($url ?: config('services.ollama.url', 'http://127.0.0.1:11434'), '/');
 
@@ -184,14 +210,42 @@ PANDUAN FORMAT MAKLUM BALAS:
                 $pulled = collect($rawModels)->pluck('name')->toArray();
 
                 if (!empty($pulled)) {
-                    return $pulled;
+                    return [
+                        'models' => $pulled,
+                        'live' => true,
+                        'message' => 'Berjaya menarik ' . count($pulled) . " model terus dari pelayan Ollama ({$ollamaUrl})!",
+                    ];
                 }
+
+                return [
+                    'models' => $defaultModels,
+                    'live' => true,
+                    'message' => "Pelayan Ollama disambung ({$ollamaUrl}), namun tiada model dimuat turun lagi. Menggunakan model cadangan.",
+                ];
             }
+
+            return [
+                'models' => $defaultModels,
+                'live' => false,
+                'message' => "Pelayan Ollama membalas status HTTP {$response->status()}. Menggunakan senarai model cadangan.",
+            ];
         } catch (\Throwable $e) {
             Log::info("Fetch Ollama Models Notice: " . $e->getMessage());
-        }
 
-        return $defaultModels;
+            return [
+                'models' => $defaultModels,
+                'live' => false,
+                'message' => "Pelayan Ollama di '{$ollamaUrl}' tidak aktif atau tidak dapat dicapai. Senarai model cadangan dimuatkan sebagai rujukan.",
+            ];
+        }
+    }
+
+    /**
+     * Pull all models installed on the Ollama server.
+     */
+    public function fetchOllamaModels(?string $url = null): array
+    {
+        return $this->fetchOllamaModelsWithDetails($url)['models'];
     }
 
     /**
@@ -345,8 +399,47 @@ PANDUAN FORMAT MAKLUM BALAS:
             ],
         ]);
 
-        // Build live SME business context
-        $businessContext = $this->gatherBusinessContext($orgId);
+        // Zero-Token Scope Guardrail: Block exploit/cybersecurity/unrelated coding abuse
+        $scopeViolation = $this->checkScopeViolation($prompt, $orgId, $user);
+        if ($scopeViolation !== null) {
+            $assistantMessage = ChatMessage::create([
+                'thread_id' => $thread->id,
+                'role' => 'assistant',
+                'content' => $scopeViolation,
+                'metadata' => [
+                    'provider' => $config->provider,
+                    'model' => $config->model,
+                    'tokens_used' => 0,
+                    'context_module' => $contextModule,
+                    'scope_blocked' => true,
+                ],
+            ]);
+
+            $run = AgentRun::create([
+                'org_id' => $orgId,
+                'agent_config_id' => $config->id,
+                'thread_id' => $thread->id,
+                'prompt' => $prompt,
+                'output' => $scopeViolation,
+                'status' => 'completed',
+                'tokens_used' => 0,
+            ]);
+
+            return [
+                'thread_id' => $thread->id,
+                'thread' => $thread,
+                'user_message' => $userMessage,
+                'assistant_message' => $assistantMessage,
+                'run_id' => $run->id,
+                'provider' => $config->provider,
+                'model' => $config->model,
+                'tokens_used' => 0,
+            ];
+        }
+
+        // Build live SME business context with multi-tenancy & role awareness
+        $businessContext = $this->gatherBusinessContext($orgId, $user);
+        $systemInstruction = $this->buildSystemInstruction($config, $businessContext, $orgId, $user);
 
         // Fetch recent messages in current thread
         $previousMessages = ChatMessage::where('thread_id', $thread->id)
@@ -359,9 +452,9 @@ PANDUAN FORMAT MAKLUM BALAS:
 
         // Strictly call only the chosen provider
         if ($config->provider === 'ollama') {
-            $aiResponse = $this->callOllama($config, $prompt, $businessContext, $previousMessages);
+            $aiResponse = $this->callOllama($config, $prompt, $systemInstruction, $previousMessages);
         } else {
-            $aiResponse = $this->callGemini($config, $prompt, $businessContext, $previousMessages);
+            $aiResponse = $this->callGemini($config, $prompt, $systemInstruction, $previousMessages);
         }
 
         $assistantText = static::cleanMarkdown($aiResponse['content']);
@@ -407,7 +500,7 @@ PANDUAN FORMAT MAKLUM BALAS:
     /**
      * Execute Gemini API call.
      */
-    protected function callGemini(AgentConfig $config, string $prompt, string $businessContext, $previousMessages): array
+    protected function callGemini(AgentConfig $config, string $prompt, string $systemInstruction, $previousMessages): array
     {
         $apiKey = $config->gemini_api_key ?: config('services.gemini.api_key');
         $model = $config->gemini_model ?: config('services.gemini.model', 'gemini-2.5-flash');
@@ -423,8 +516,6 @@ PANDUAN FORMAT MAKLUM BALAS:
 
         try {
             $endpoint = "https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent?key={$apiKey}";
-
-            $systemInstruction = trim(($config->system_prompt ?? '') . "\n\n" . $businessContext);
 
             $contents = [];
             foreach ($previousMessages as $msg) {
@@ -491,12 +582,10 @@ PANDUAN FORMAT MAKLUM BALAS:
     /**
      * Execute Ollama API call.
      */
-    protected function callOllama(AgentConfig $config, string $prompt, string $businessContext, $previousMessages): array
+    protected function callOllama(AgentConfig $config, string $prompt, string $systemInstruction, $previousMessages): array
     {
         $url = rtrim($config->ollama_url ?: config('services.ollama.url', 'http://127.0.0.1:11434'), '/');
         $model = $config->ollama_model ?: config('services.ollama.model', 'gemma4:e2b');
-
-        $systemInstruction = trim(($config->system_prompt ?? '') . "\n\n" . $businessContext);
 
         $messages = [
             ['role' => 'system', 'content' => $systemInstruction],
@@ -561,11 +650,110 @@ PANDUAN FORMAT MAKLUM BALAS:
     }
 
     /**
+     * Check if the user prompt violates OpenKuasa business-only scope.
+     * Prevents token abuse (e.g. using Tuah as an unrestricted coding/hacking tool).
+     */
+    public function checkScopeViolation(string $prompt, ?string $orgId = null, ?User $user = null): ?string
+    {
+        $normalized = mb_strtolower(trim($prompt));
+
+        // 1. Cybersecurity, exploit, vulnerability scanning, hacking tools
+        $cyberSecurityPatterns = [
+            'vulnerability', 'vulnerbility', 'kerentanan', 'exploit', 'cve-', 'cve ', 'cve_',
+            'sql injection', 'sqli', 'cross-site scripting', 'xss', 'csrf', 'reverse shell',
+            'payload', 'brute force', 'bruteforce', 'port scan', 'portscan', 'metasploit', 'nmap', 'ddos',
+            'penetration test', 'pentest', 'penggodam', 'godam', 'keylogger',
+            'malware', 'trojan', 'packet sniffer', 'wireshark', 'buffer overflow',
+            'analisa website', 'analisis website', 'scan website', 'hacking', 'hacker',
+            'burp suite', 'nikto', 'hydra', 'gobuster', 'sqlmap',
+        ];
+
+        foreach ($cyberSecurityPatterns as $pattern) {
+            if (str_contains($normalized, $pattern)) {
+                return "Maaf, Tuah AI adalah pembantu pengurusan operasi perniagaan khusus untuk platform OpenKuasa bagi syarikat anda.\n\nSaya tidak dibenarkan menjana sebarang kod keselamatan siber, skrip analisis kerentanan (vulnerability scanner), atau alat penggodaman.\n\nPenggunaan Tuah AI dihadkan secara ketat untuk operasi perniagaan: Kewangan & Invois (Lekir), Modal Insan & Pengambilan Staf (Lekiu), Jualan/CRM & Produk (Kasturi), dan Pemasaran & Iklan (Jebat).";
+            }
+        }
+
+        // 2. Disallowed external programming languages & general coding
+        // RULE: General coding is strictly locked out to prevent token drain.
+        // The ONLY exception allowed is HTML/CSS markup to format company business data/reports.
+        $hasDisallowedLang = preg_match('/\b(python|py|php|javascript|js|typescript|ts|node|nodejs|c\+\+|cpp|c#|\bc\b|golang|go|rust|java|kotlin|swift|bash|sh|powershell|shell|solidity|ruby|perl|dart|r)\b/i', $normalized);
+        $hasCodeIntent = preg_match('/\b(kod|code|script|skrip|coding|program|pengaturcaraan|fungsi|function|algoritma|algorithm)\b/i', $normalized)
+            || preg_match('/\b(buat|buatkan|bina|tulis|jana|write|create|generate)\b.*?\b(kod|code|script|skrip|fungsi|function|program)\b/i', $normalized);
+        $hasAllowedMarkup = preg_match('/\b(html|css|markup|templat|template)\b/i', $normalized);
+
+        if ($hasDisallowedLang && ($hasCodeIntent || preg_match('/\b(python|py|bash|sh|c\+\+|cpp|rust|golang|java)\b/i', $normalized))) {
+            return "Maaf, Tuah AI tidak dibenarkan menjana kod pengaturcaraan umum bagi mengelakkan pembaziran token dan penyalahgunaan sistem.\n\nSistem ini hanya menyokong kod format **HTML / CSS** khusus untuk paparan data perniagaan syarikat anda di OpenKuasa (seperti templat cetakan invois HTML, reka bentuk penyata kewangan, atau templat emel rasmi syarikat).\n\nSila kemukakan soalan berkaitan operasi dan pengurusan perniagaan syarikat anda.";
+        }
+
+        if ($hasCodeIntent && !$hasAllowedMarkup) {
+            return "Maaf, Tuah AI dihadkan secara ketat untuk operasi perniagaan dan tidak berfungsi sebagai enjin jana kod umum (general programming generator).\n\nSekiranya anda memerlukan kod untuk paparan sistem, Tuah AI hanya membenarkan format **HTML / CSS** untuk mempersembahkan data perniagaan syarikat ini (contohnya jadual invois, penyata untung rugi, atau templat cetakan dokumen rasmi).";
+        }
+
+        // 3. Multi-tenant boundary check (Non-Superadmin cannot query other companies)
+        if ($user && !$user->isSuperadmin()) {
+            $isCrossTenantAttempt = preg_match('/\b(data|maklumat|rekod|invois|kakitangan|staf|jualan|untung|hasil)\b.*?\b(syarikat|kompeni|organisasi|tenant)\s+lain\b/i', $normalized)
+                || preg_match('/\b(senarai|tunjuk|papar|lihat|senaraikan)\b.*?\b(semua\s+)?(syarikat|kompeni|organisasi)\b.*?\b(sistem|platform|pangkalan\s+data|database)\b/i', $normalized)
+                || preg_match('/\b(cross[- ]tenant|cross[- ]company|merentas\s+syarikat|kompeni\s+sebelah)\b/i', $normalized);
+
+            if ($isCrossTenantAttempt) {
+                $org = $orgId ? Org::find($orgId) : null;
+                $orgName = $org?->name ?? 'syarikat anda';
+                return "Maaf, akses data dihadkan secara ketat kepada syarikat yang anda log masuk sahaja ({$orgName}) selaras dengan dasar kedaulatan data berbilang penyewa (multi-tenancy) OpenKuasa.\n\nAkaun anda tidak mempunyai kebenaran Superadmin untuk melihat atau merentas data syarikat/organisasi lain.";
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Build the strict system instruction ensuring scope guardrails and tenant data isolation.
+     */
+    protected function buildSystemInstruction(
+        AgentConfig $config,
+        string $businessContext,
+        string $orgId,
+        ?User $user = null
+    ): string {
+        $org = Org::find($orgId);
+        $orgName = $org?->name ?? 'Syarikat Semasa';
+        $isSuperadmin = $user?->isSuperadmin() ?? false;
+
+        $tenancyRule = $isSuperadmin
+            ? "PENGGUNA INI ADALAH SUPERADMIN SISTEM: Pengguna mempunyai hak akses pentadbir super. Anda dibenarkan menganalisis data merentas syarikat dan status keseluruhan platform OpenKuasa sekiranya diminta oleh Superadmin."
+            : "ISOLASI DATA SYARIKAT (MULTI-TENANCY SOVEREIGNTY): Anda HANYA mempunyai akses kepada syarikat '{$orgName}' (ID: {$orgId}). Anda DILARANG KERAS merujuk, mendedahkan, merentas penyewa (cross-tenant), atau meneka data syarikat lain, pentadbir lain, atau sistem luar. Sekiranya pengguna meminta data syarikat lain atau meminta perbandingan rentas syarikat, tolak dengan tegas atas dasar kerahsiaan dan kedaulatan data syarikat.";
+
+        $guardrails = <<<PROMPT
+=== PERANAN & HAD KESELAMATAN TUAH AI (SISTEM OPERASI PERNIAGAAN OPENKUASA) ===
+1. PERANAN UTAMA: Anda adalah Tuah AI, pembantu operasi perniagaan pintar Malaysia khusus untuk platform OpenKuasa. Anda membantu pengurusan syarikat merentas modul: Kewangan & Invois (Lekir), Modal Insan & Pengambilan Staf (Lekiu), Jualan/CRM & Produk (Kasturi), dan Pemasaran & Iklan (Jebat).
+2. HAD KOD PENGATURCARAAN (PROGRAMMING SCOPE RESTRICTION):
+   - Anda DILARANG sama sekali menjana kod pengaturcaraan umum (seperti Python, Bash, C++, Java, Rust, Go, PHP backend, skrip penggodaman, atau analisis kerentanan keselamatan web).
+   - SATU-SATUNYA pengecualian kod yang dibenarkan adalah kod HTML / CSS untuk memformat, mereka bentuk laporan, atau templat dokumen bagi data perniagaan syarikat ini di dalam OpenKuasa (contoh: templat invois HTML, jadual penyata untung rugi, atau templat emel rasmi hebahan kakitangan).
+   - Sekiranya pengguna meminta anda membina kod di luar skop HTML data perniagaan syarikat ini, tolak dengan sopan dan jelaskan had peranan anda sebagai pembantu perniagaan OpenKuasa.
+3. KAWALAN DATA MULTI-PENYEWA (MULTI-TENANCY):
+   {$tenancyRule}
+4. KAWALAN PENGGUNAAN TOKEN & PENGELAKAN PENYALAHGUNAAN:
+   - Jawab secara tepat, profesional, dan padat dalam Bahasa Melayu perniagaan Malaysia.
+   - Jangan bertindak sebagai model sembang umum (ChatGPT) untuk tugasan luar seperti kerja sekolah, hal peribadi, atau perbualan yang tiada kaitan dengan perniagaan.
+PROMPT;
+
+        $userSystemPrompt = trim($config->system_prompt ?? '');
+        if (!empty($userSystemPrompt)) {
+            $guardrails .= "\n\nTETAPAN ARAHAN TAMBAHAN SYARIKAT:\n" . $userSystemPrompt;
+        }
+
+        $guardrails .= "\n\n" . $businessContext;
+
+        return trim($guardrails);
+    }
+
+    /**
      * Gather live SME business metrics for Malaysian operational context.
      */
-    protected function gatherBusinessContext(string $orgId): string
+    protected function gatherBusinessContext(string $orgId, ?User $user = null): string
     {
         try {
+            $isSuperadmin = $user?->isSuperadmin() ?? false;
             $org = Org::find($orgId);
             $orgName = $org?->name ?? 'Syarikat';
 
@@ -585,14 +773,28 @@ PANDUAN FORMAT MAKLUM BALAS:
                 ->where('status', 'published')
                 ->count();
 
-            return "KONTEKS OPERASI PERNIAGAAN SEMASA:
+            $totalProducts = \App\Models\Product::where('org_id', $orgId)->count();
+
+            $context = "KONTEKS OPERASI PERNIAGAAN SEMASA:
 - Nama Syarikat: {$orgName}
-- Kewangan (Bendahara): {$unpaidInvoices} invois belum dijelaskan sepenuhnya.
-- Kakitangan (Lekiu): {$totalEmployees} kakitangan aktif berdaftar.
-- Jualan / CRM (Kasturi): {$openDeals} urus niaga (deals) dalam proses saluran paip (pipeline).
-- Pengrekrutan (Lekir): {$openJobs} iklan kekosongan jawatan aktif dibuka.";
+- Kewangan & Invois (Lekir): {$unpaidInvoices} invois belum dijelaskan sepenuhnya.
+- Modal Insan & Pengambilan (Lekiu): {$totalEmployees} kakitangan aktif berdaftar, {$openJobs} iklan kekosongan jawatan aktif.
+- Jualan / CRM & Produk (Kasturi): {$openDeals} urus niaga (deals) dalam proses pipeline, {$totalProducts} produk/servis berdaftar dalam katalog.
+- Pemasaran & Iklan (Jebat): Enjin pintar automasi iklan digital berbilang saluran.";
+
+            if ($isSuperadmin) {
+                $totalOrgs = Org::count();
+                $totalUsers = User::count();
+                $context .= "\n\nSTATUS SUPERADMIN (AKSES MENYELURUH):
+- Pengguna log masuk mempunyai kebenaran Superadmin.
+- Jumlah Syarikat Berdaftar di Platform: {$totalOrgs}
+- Jumlah Pengguna Platform: {$totalUsers}
+- Superadmin dibenarkan meminta analitik merentas syarikat dan pemantauan sistem.";
+            }
+
+            return $context;
         } catch (\Throwable) {
-            return "KONTEKS OPERASI: Platform OpenKuasa bersepadu merentas Kewangan, Kakitangan, CRM, Pemasaran & Pengrekrutan.";
+            return "KONTEKS OPERASI: Platform OpenKuasa bersepadu merentas Kewangan (Lekir), Modal Insan (Lekiu), Jualan/Produk (Kasturi), dan Pemasaran (Jebat) bagi syarikat ID: {$orgId}.";
         }
     }
 

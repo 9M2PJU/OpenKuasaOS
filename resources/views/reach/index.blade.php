@@ -12,7 +12,11 @@
             <h1 class="text-2xl font-black tracking-tight text-slate-900 dark:text-white mt-1">Jebat &bull; Pemasaran & Pengiklanan Digital</h1>
             <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Pengurusan kempen digital multi-platform, tangkapan prospek (leads) masa nyata dan optimasi kos iklan.</p>
         </div>
-        <div class="flex items-center gap-2.5">
+        <div class="flex items-center gap-2.5 flex-wrap">
+            <a href="{{ route('reach.studio') }}" class="px-3.5 py-2 rounded-xl bg-gradient-to-r from-pink-500 to-rose-600 hover:from-pink-600 hover:to-rose-700 text-white text-xs font-bold shadow-sm transition flex items-center gap-1.5">
+                <span>⚡</span>
+                <span>Studio Iklan Pintar</span>
+            </a>
             <a href="{{ route('reach.settings') }}" class="px-3.5 py-2 rounded-xl border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20 text-xs font-semibold text-rose-500 dark:text-rose-400 shadow-sm transition flex items-center gap-1.5">
                 <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -21,7 +25,7 @@
                 Tetapan Iklan
             </a>
             <a href="{{ route('reach.leads') }}" class="px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800/80 text-xs font-semibold text-slate-700 dark:text-slate-300 shadow-sm transition">
-                Senarai Prospek (Leads) &rarr;
+                Senarai Prospek &rarr;
             </a>
             <a href="{{ route('reach.campaigns') }}" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-sm transition">
                 + Urus Kempen Iklan

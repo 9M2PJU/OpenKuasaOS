@@ -5,14 +5,18 @@
     <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
             <div class="flex items-center gap-2">
-                <a href="{{ route('hire.index') }}" class="text-xs text-indigo-600 dark:text-indigo-400 font-semibold hover:underline">&larr; Lekir Hire</a>
+                <a href="{{ route('hire.index') }}" class="text-xs text-indigo-600 dark:text-indigo-400 font-semibold hover:underline">&larr; Lekiu Pengambilan Staf</a>
                 <span class="text-slate-400 text-xs">/</span>
                 <span class="text-xs text-slate-500 font-medium">Jawatan Kosong</span>
             </div>
             <h1 class="text-2xl font-bold tracking-tight text-slate-900 dark:text-white mt-1">Iklan Jawatan Kosong Syarikat</h1>
-            <p class="text-xs text-slate-500 mt-1">Urus siaran peluang pekerjaan dan penyerapan bakat baru.</p>
+            <p class="text-xs text-slate-500 mt-1">Urus siaran peluang pekerjaan dan jana salinan kempen rekrutmen Jebat AI.</p>
         </div>
-        <div>
+        <div class="flex items-center gap-2">
+            <a href="{{ route('reach.studio', ['type' => 'job']) }}" class="px-3.5 py-2.5 rounded-xl border border-pink-500/30 bg-pink-500/10 hover:bg-pink-500/20 text-pink-600 dark:text-pink-400 text-xs font-semibold shadow-xs transition flex items-center gap-1.5">
+                <span>⚡</span>
+                <span>Jebat Ad Studio</span>
+            </a>
             <button @click="addModal = true" class="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-sm transition">
                 + Buka Iklan Jawatan Baru
             </button>
@@ -30,7 +34,7 @@
                         <th class="p-4 font-semibold">Jenis Pekerjaan</th>
                         <th class="p-4 font-semibold">Pemohon</th>
                         <th class="p-4 font-semibold">Status</th>
-                        <th class="p-4 font-semibold">Tarikh Cipta</th>
+                        <th class="p-4 font-semibold text-right">Tindakan</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
@@ -51,7 +55,12 @@
                                 {{ $job->status }}
                             </span>
                         </td>
-                        <td class="p-4 text-slate-400">{{ $job->created_at ? $job->created_at->format('d M Y') : '-' }}</td>
+                        <td class="p-4 text-right">
+                            <a href="{{ route('reach.studio', ['job_id' => $job->id]) }}" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-pink-50 dark:bg-pink-950/50 hover:bg-pink-100 dark:hover:bg-pink-900/60 text-pink-600 dark:text-pink-300 text-[11px] font-bold border border-pink-200/60 dark:border-pink-800/60 transition shadow-2xs">
+                                <span>⚡</span>
+                                <span>Jana Iklan Jebat</span>
+                            </a>
+                        </td>
                     </tr>
                     @empty
                     <tr>

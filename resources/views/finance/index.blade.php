@@ -1,4 +1,4 @@
-@extends('layouts.app', ['title' => 'Bendahara — Modul Kewangan & Percukaian'])
+@extends('layouts.app', ['title' => 'Lekir — Modul Kewangan & Percukaian'])
 
 @section('content')
 <div class="space-y-6 pb-12">
@@ -9,7 +9,7 @@
                 <span class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-amber-500/10 text-amber-500 border border-amber-500/20 font-bold text-sm">
                     ⚖️
                 </span>
-                <h1 class="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Bendahara (Kewangan, Perakaunan & Percukaian)</h1>
+                <h1 class="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Lekir (Kewangan, Perakaunan & Percukaian)</h1>
             </div>
             <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Papan Pemantauan Prestasi Kewangan, Aliran Tunai, e-Invois LHDN & Pematuhan Lejar Dwientri.</p>
         </div>

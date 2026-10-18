@@ -1,4 +1,4 @@
-@extends('layouts.app', ['title' => 'Butiran Invois — Bendahara'])
+@extends('layouts.app', ['title' => 'Butiran Invois — Lekir'])
 
 @section('content')
 <div class="max-w-4xl mx-auto space-y-6" x-data="{ payModal: false, voidModal: false }">

@@ -42,6 +42,7 @@ Route::middleware(['auth', 'tenant'])->group(function () {
         Route::post('settings', [CommandController::class, 'updateSettings'])->name('settings.update');
         Route::post('test-connection', [CommandController::class, 'testConnection'])->name('test-connection');
         Route::get('models', [CommandController::class, 'fetchModels'])->name('models');
+        Route::delete('threads/{id}', [CommandController::class, 'deleteThread'])->name('thread.delete');
     });
 
     // Bendahara (Finance & Invoicing)
@@ -103,6 +104,12 @@ Route::middleware(['auth', 'tenant'])->group(function () {
         Route::post('appointments', [CrmController::class, 'storeAppointment'])->name('appointments.store');
         Route::post('appointments/{id}/status', [CrmController::class, 'updateAppointmentStatus'])->name('appointments.update-status');
         Route::delete('appointments/{id}', [CrmController::class, 'destroyAppointment'])->name('appointments.destroy');
+
+        // Produk & Servis (Katalog Jualan)
+        Route::get('products', [CrmController::class, 'products'])->name('products');
+        Route::post('products', [CrmController::class, 'storeProduct'])->name('products.store');
+        Route::put('products/{id}', [CrmController::class, 'updateProduct'])->name('products.update');
+        Route::delete('products/{id}', [CrmController::class, 'deleteProduct'])->name('products.delete');
     });
 
     // Jebat (Reach & Ads)
@@ -115,6 +122,10 @@ Route::middleware(['auth', 'tenant'])->group(function () {
         Route::post('ad-settings', [ReachController::class, 'updateAdSettings'])->name('settings.update');
         Route::post('ad-settings/connect', [ReachController::class, 'connectProvider'])->name('settings.connect');
         Route::post('ad-settings/disconnect', [ReachController::class, 'disconnectProvider'])->name('settings.disconnect');
+
+        // Studio Iklan Pintar (AI Ad & Copywriting Generator untuk Produk & Jawatan)
+        Route::get('studio', [ReachController::class, 'adStudio'])->name('studio');
+        Route::post('generate-copy', [ReachController::class, 'generateAdCopy'])->name('generate-copy');
     });
 
     // Lekir (Hire & ATS)

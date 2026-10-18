@@ -16,7 +16,11 @@
                 Pengurusan saluran urus niaga jualan, penjejakan kontak pelanggan dan pemantauan prestasi 6 ejen AI pintar dari pangkalan data.
             </p>
         </div>
-        <div class="flex items-center gap-2.5">
+        <div class="flex items-center gap-2.5 flex-wrap">
+            <a href="{{ route('crm.products') }}" class="px-3.5 py-2 rounded-xl border border-indigo-500/30 bg-indigo-500/10 hover:bg-indigo-500/20 text-xs font-semibold text-indigo-600 dark:text-indigo-400 shadow-sm transition flex items-center gap-1.5">
+                <span>📦</span>
+                <span>Katalog Produk</span>
+            </a>
             <a href="{{ route('crm.calendar') }}" class="px-3.5 py-2 rounded-xl border border-cyan-500/30 bg-cyan-500/10 hover:bg-cyan-500/20 text-xs font-semibold text-cyan-400 shadow-sm transition flex items-center gap-1.5">
                 <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -24,10 +28,10 @@
                 <span>Kalendar Temujanji</span>
             </a>
             <a href="{{ route('crm.contacts') }}" class="px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800/80 text-xs font-semibold text-slate-700 dark:text-slate-300 shadow-sm transition">
-                Buku Kontak Pelanggan
+                Buku Kontak
             </a>
             <a href="{{ route('crm.deals') }}" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-sm transition flex items-center gap-1.5">
-                <span>Papan Pipeline Deals</span>
+                <span>Papan Deals</span>
                 <span>&rarr;</span>
             </a>
         </div>

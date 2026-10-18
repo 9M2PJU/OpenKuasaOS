@@ -117,7 +117,89 @@
         </form>
     </div>
 
-    <!-- 2. Maklumat Pengguna & Organisasi (Profile Info) -->
+    <!-- 2. Pilihan Tema Paparan (Display Theme) -->
+    <div class="bg-white dark:bg-[#101726] border border-slate-200 dark:border-[#1F293D] rounded-2xl p-6 shadow-sm space-y-5">
+        <div class="border-b border-slate-100 dark:border-slate-800/80 pb-4 flex items-center justify-between flex-wrap gap-2">
+            <div>
+                <h2 class="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <span>🎨</span>
+                    <span>{{ $isMalay ? 'Tema Paparan' : 'Display Theme' }}</span>
+                </h2>
+                <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    {{ $isMalay ? 'Pilih mod paparan antaramuka OpenKuasa mengikut keselesaan anda. Mod Cerah adalah tema lalai sistem.' : 'Select your preferred OpenKuasa interface mode. Light Mode is set as the system default.' }}
+                </p>
+            </div>
+            <div class="flex items-center gap-2">
+                <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                    <span data-theme-icon class="flex items-center"></span>
+                    <span data-theme-text>{{ $isMalay ? 'Mod Cerah' : 'Light Mode' }}</span>
+                </span>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <!-- Pilihan 1: Mod Cerah (Default / Lalai) -->
+            <div data-theme-select="light" data-theme-card="light" class="relative flex flex-col p-4 rounded-xl border-2 cursor-pointer transition border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400 flex items-center justify-center font-bold text-lg shadow-2xs border border-amber-200/50 dark:border-amber-800/50">
+                            ☀️
+                        </div>
+                        <div>
+                            <span class="block font-bold text-sm text-slate-900 dark:text-white">{{ $isMalay ? 'Mod Cerah (Light Mode)' : 'Light Mode' }}</span>
+                            <span class="block text-[11px] text-slate-500 dark:text-slate-400">{{ $isMalay ? 'Lalai Sistem' : 'System Default' }}</span>
+                        </div>
+                    </div>
+                    <input type="radio" name="theme_preference" value="light" class="w-4 h-4 text-indigo-600 focus:ring-indigo-500 pointer-events-none">
+                </div>
+                <div class="mt-3 text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed">
+                    {{ $isMalay ? 'Latar belakang cerah dengan kontras teks optimum. Sesuai untuk kegunaan harian dan persekitaran pejabat.' : 'Crisp light background with optimal text contrast for day-to-day productivity.' }}
+                </div>
+                <div class="mt-3 flex items-center gap-2">
+                    <span class="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300 border border-amber-300/40">
+                        {{ $isMalay ? 'Lalai (Default)' : 'Default' }}
+                    </span>
+                </div>
+            </div>
+
+            <!-- Pilihan 2: Mod Gelap (Dark Mode) -->
+            <div data-theme-select="dark" data-theme-card="dark" class="relative flex flex-col p-4 rounded-xl border-2 cursor-pointer transition border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-xl bg-slate-900 text-indigo-400 border border-slate-700 flex items-center justify-center font-bold text-lg shadow-2xs">
+                            🌙
+                        </div>
+                        <div>
+                            <span class="block font-bold text-sm text-slate-900 dark:text-white">{{ $isMalay ? 'Mod Gelap (Dark Mode)' : 'Dark Mode' }}</span>
+                            <span class="block text-[11px] text-slate-500 dark:text-slate-400">{{ $isMalay ? 'Pilihan Alternatif' : 'Alternative' }}</span>
+                        </div>
+                    </div>
+                    <input type="radio" name="theme_preference" value="dark" class="w-4 h-4 text-indigo-600 focus:ring-indigo-500 pointer-events-none">
+                </div>
+                <div class="mt-3 text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed">
+                    {{ $isMalay ? 'Latar belakang gelap mewah slate-950 bagi mengurangkan keletihan mata dalam suasana pencahayaan malap.' : 'Sleek slate-950 dark background engineered to reduce eye strain in darker environments.' }}
+                </div>
+                <div class="mt-3 flex items-center gap-2">
+                    <span class="inline-block px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400">
+                        {{ $isMalay ? 'Alternatif' : 'Alternative' }}
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <div class="pt-3 border-t border-slate-100 dark:border-slate-800/80 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div class="text-[11px] text-slate-500 dark:text-slate-400">
+                <span>{{ $isMalay ? 'Pilihan tema disimpan secara setempat pada pelayar anda.' : 'Theme preference is stored locally in your browser.' }}</span>
+            </div>
+
+            <button data-theme-toggle type="button" class="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-indigo-600 dark:hover:bg-indigo-700 text-white text-xs font-semibold shadow-xs transition flex items-center justify-center gap-2 cursor-pointer active:scale-95 flex-shrink-0">
+                <span data-theme-icon class="flex items-center"></span>
+                <span>{{ $isMalay ? 'Tukar Mod' : 'Toggle Mode' }}</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- 3. Maklumat Pengguna & Organisasi (Profile Info) -->
     <div class="bg-white dark:bg-[#101726] border border-slate-200 dark:border-[#1F293D] rounded-2xl p-6 shadow-sm space-y-5">
         <div class="border-b border-slate-100 dark:border-slate-800/80 pb-4 flex items-center justify-between">
             <div>

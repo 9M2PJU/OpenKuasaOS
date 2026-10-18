@@ -8,9 +8,34 @@
     <link rel="icon" type="image/x-icon" href="{{ asset('favicon.ico') }}">
     <link rel="icon" type="image/png" sizes="32x32" href="{{ asset('favicon-32x32.png') }}">
     <link rel="apple-touch-icon" sizes="180x180" href="{{ asset('apple-touch-icon.png') }}">
+    <script>
+        (function() {
+            try {
+                var theme = localStorage.getItem('openkuasa_theme');
+                if (theme === 'dark') {
+                    document.documentElement.classList.add('dark');
+                } else {
+                    document.documentElement.classList.remove('dark');
+                }
+            } catch (e) {
+                document.documentElement.classList.remove('dark');
+            }
+        })();
+    </script>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
-<body class="h-full flex items-center justify-center p-6">
+<body class="h-full flex items-center justify-center p-6 relative">
+    <!-- Theme Toggle (Top-Right) -->
+    <div class="fixed top-4 right-4 z-40">
+        <button data-theme-toggle type="button" class="group flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-slate-200 dark:border-slate-800 shadow-xs hover:shadow-md hover:border-slate-300 dark:hover:border-slate-700 transition cursor-pointer" title="Tukar Mod Cerah / Gelap">
+            <span data-theme-icon class="flex items-center justify-center">
+                <!-- Injected by JS -->
+            </span>
+            <span data-theme-text class="text-xs font-medium text-slate-700 dark:text-slate-300">
+                Mod Cerah
+            </span>
+        </button>
+    </div>
     <div class="w-full max-w-md">
         <!-- Logo -->
         <div class="text-center mb-8">

@@ -5,7 +5,7 @@
     <!-- Action Bar -->
     <div class="flex items-center justify-between print:hidden">
         <div class="flex items-center gap-2 text-xs text-slate-400">
-            <a href="{{ route('finance.index') }}" class="hover:underline">Bendahara</a>
+            <a href="{{ route('finance.index') }}" class="hover:underline">Lekir</a>
             <span>&rsaquo;</span>
             <a href="{{ route('finance.expenses') }}" class="hover:underline">Perbelanjaan</a>
             <span>&rsaquo;</span>

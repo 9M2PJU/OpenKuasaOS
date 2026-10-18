@@ -1,11 +1,11 @@
-@extends('layouts.app', ['title' => 'Bendahara — Sebutharga (Quotations)'])
+@extends('layouts.app', ['title' => 'Lekir — Sebutharga (Quotations)'])
 
 @section('content')
 <div class="space-y-6">
     <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
             <div class="flex items-center gap-2 text-xs text-slate-400 mb-1">
-                <a href="{{ route('finance.index') }}" class="hover:underline">Bendahara</a>
+                <a href="{{ route('finance.index') }}" class="hover:underline">Lekir</a>
                 <span>&rsaquo;</span>
                 <span class="text-slate-600 dark:text-slate-300">Sebutharga</span>
             </div>

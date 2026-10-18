@@ -203,7 +203,7 @@
                 </span>
             </div>
             <p class="text-xs text-slate-500 mb-3">
-                Model Bahasa Tempatan/Awan yang dipautkan untuk pertanyaan Bendahara, Lekiu, Kasturi, Lekir, dan Jebat.
+                Model Bahasa Tempatan/Awan yang dipautkan untuk pertanyaan Lekir, Lekiu, Kasturi, dan Jebat.
             </p>
             <div class="bg-slate-50 dark:bg-slate-800/60 rounded-xl p-3 text-xs space-y-1 font-mono text-slate-700 dark:text-slate-300">
                 <div class="flex justify-between">

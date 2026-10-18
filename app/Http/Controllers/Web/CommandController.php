@@ -23,13 +23,13 @@ class CommandController extends Controller
             ->get();
 
         $activeThread = null;
-        if ($request->filled('thread_id')) {
+        if ($request->has('new')) {
+            $activeThread = null;
+        } elseif ($request->filled('thread_id')) {
             $activeThread = ChatThread::with('messages')
                 ->where('org_id', $orgId)
                 ->find($request->thread_id);
-        }
-
-        if (!$activeThread && $threads->isNotEmpty()) {
+        } elseif ($threads->isNotEmpty()) {
             $activeThread = ChatThread::with('messages')
                 ->where('org_id', $orgId)
                 ->find($threads->first()->id);
@@ -41,7 +41,21 @@ class CommandController extends Controller
         $geminiModels = $this->tuahAiService->fetchGeminiModels($agentConfig->gemini_api_key);
         $ollamaModels = $this->tuahAiService->fetchOllamaModels($agentConfig->ollama_url);
 
-        return view('command.index', compact('threads', 'activeThread', 'agentConfig', 'geminiModels', 'ollamaModels'));
+        $initialMessages = [];
+        if ($activeThread && $activeThread->messages) {
+            foreach ($activeThread->messages as $msg) {
+                $initialMessages[] = [
+                    'id' => (string) $msg->id,
+                    'role' => $msg->role,
+                    'content' => $msg->content,
+                    'rendered_html' => $msg->role === 'assistant'
+                        ? \App\Services\Ai\TuahAiService::renderMarkdown($msg->content)
+                        : null,
+                ];
+            }
+        }
+
+        return view('command.index', compact('threads', 'activeThread', 'agentConfig', 'geminiModels', 'ollamaModels', 'initialMessages'));
     }
 
     public function sendPrompt(Request $request)
@@ -61,6 +75,24 @@ class CommandController extends Controller
             'general',
             $user
         );
+
+        if ($request->expectsJson() || $request->wantsJson() || $request->ajax()) {
+            return response()->json([
+                'success' => true,
+                'thread_id' => $result['thread_id'],
+                'user_message' => [
+                    'id' => $result['user_message']->id,
+                    'role' => 'user',
+                    'content' => $result['user_message']->content,
+                ],
+                'assistant_message' => [
+                    'id' => $result['assistant_message']->id,
+                    'role' => 'assistant',
+                    'content' => $result['assistant_message']->content,
+                    'rendered_html' => \App\Services\Ai\TuahAiService::renderMarkdown($result['assistant_message']->content),
+                ],
+            ]);
+        }
 
         return redirect()->route('command.index', ['thread_id' => $result['thread_id']]);
     }
@@ -86,20 +118,31 @@ class CommandController extends Controller
 
     public function fetchModels(Request $request)
     {
+        $orgId = OrganizationContext::id();
         $provider = $request->query('provider', 'gemini');
 
         if ($provider === 'ollama') {
             $url = $request->query('url');
-            $models = $this->tuahAiService->fetchOllamaModels($url);
+            if (empty($url) && $orgId) {
+                $agentConfig = $this->tuahAiService->getConfig($orgId);
+                $url = $agentConfig->ollama_url;
+            }
+            $result = $this->tuahAiService->fetchOllamaModelsWithDetails($url);
         } else {
             $key = $request->query('key');
-            $models = $this->tuahAiService->fetchGeminiModels($key);
+            if (empty($key) && $orgId) {
+                $agentConfig = $this->tuahAiService->getConfig($orgId);
+                $key = $agentConfig->gemini_api_key;
+            }
+            $result = $this->tuahAiService->fetchGeminiModelsWithDetails($key);
         }
 
         return response()->json([
             'success' => true,
             'provider' => $provider,
-            'models' => $models,
+            'models' => $result['models'],
+            'live' => $result['live'] ?? true,
+            'message' => $result['message'] ?? null,
         ]);
     }
 
@@ -125,5 +168,18 @@ class CommandController extends Controller
         }
 
         return redirect()->back()->with('error', $result['message']);
+    }
+
+    public function deleteThread(string $id)
+    {
+        $orgId = OrganizationContext::id();
+        $thread = ChatThread::where('org_id', $orgId)->find($id);
+        if ($thread) {
+            $thread->messages()->delete();
+            $thread->delete();
+        }
+
+        return redirect()->route('command.index', ['new' => 1])
+            ->with('success', 'Sesi sembang berjaya dipadam.');
     }
 }

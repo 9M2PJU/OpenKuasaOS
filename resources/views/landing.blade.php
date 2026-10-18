@@ -11,6 +11,20 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap">
+    <script>
+        (function() {
+            try {
+                var theme = localStorage.getItem('openkuasa_theme');
+                if (theme === 'dark') {
+                    document.documentElement.classList.add('dark');
+                } else {
+                    document.documentElement.classList.remove('dark');
+                }
+            } catch (e) {
+                document.documentElement.classList.remove('dark');
+            }
+        })();
+    </script>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 
@@ -250,7 +264,7 @@
                 ⚡ V2.0 Sumber Terbuka
             </span>
             <span>OpenKuasa — Sistem Operasi Perniagaan Berkuasa AI 100% Percuma &amp; Self-Hosted Malaysia.</span>
-            <a href="https://github.com" target="_blank" rel="noopener noreferrer">
+            <a href="https://github.com/engkuhelmy/OpenKuasaOS" target="_blank" rel="noopener noreferrer">
                 Bintang di GitHub <span aria-hidden="true">&rsaquo;</span>
             </a>
         </div>
@@ -422,7 +436,7 @@
             Sistem Operasi Perniagaan AI Sumber Terbuka Pertama Malaysia.
         </p>
         <p class="text-sm sm:text-base text-slate-400 max-w-2xl mt-2 leading-normal z-10">
-            Iklan (Jebat), Jualan (Kasturi), HR &amp; Gaji (Lekiu), Perekrut (Lekir) serta Invois &amp; e-Invois LHDN (Bendahara) disatukan dengan kecerdasan Tuah AI di pelayan anda sendiri.
+            Iklan (Jebat), Jualan &amp; Produk (Kasturi), HR &amp; Pengambilan Staf (Lekiu) serta Kewangan &amp; Invois (Lekir) disatukan dengan kecerdasan Tuah AI di pelayan anda sendiri.
         </p>
 
         <!-- Butang Tindakan Hero -->
@@ -707,7 +721,7 @@
                             <span class="w-3.5 h-1.5 rounded-full bg-slate-200"></span>
                         </div>
                     </div>
-                    <p class="text-[11px] text-slate-500">Tindakan Seterusnya: Sedia untuk jana sebut harga di Bendahara.</p>
+                    <p class="text-[11px] text-slate-500">Tindakan Seterusnya: Sedia untuk jana sebut harga di Lekir Kewangan.</p>
                 </div>
             </section>
 
@@ -779,14 +793,14 @@
                 </div>
             </section>
 
-            <!-- Bento 4: Bendahara (Kewangan, e-Invois LHDN & Perakaunan) -->
+            <!-- Bento 4: Lekir (Kewangan, e-Invois LHDN & Perakaunan) -->
             <section class="ap-tile">
                 <div class="flex items-center justify-between mb-4">
                     <span class="w-10 h-10 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center font-bold text-xl">
                         💼
                     </span>
                     <span class="text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
-                        Bendahara &bull; Kewangan &amp; Cukai
+                        Lekir &bull; Kewangan &amp; Cukai
                     </span>
                 </div>
                 <h3 class="text-2xl font-bold text-slate-900">Sebut Harga ke Invois &amp; Kesediaan MyInvois LHDN</h3>
@@ -827,12 +841,12 @@
                     Satu Sistem. Satu Memori Bersama.
                 </h2>
                 <p class="text-base sm:text-lg text-slate-300 mt-3">
-                    Tambah pelanggan sekali di Jebat &amp; Kasturi — mereka terus wujud di Bendahara. Lantik staf di Lekir — rekod mereka terus bersedia di Lekiu. Semua dibaca oleh Tuah AI.
+                    Tambah pelanggan sekali di Jebat &amp; Kasturi — mereka terus wujud di Lekir Kewangan. Lantik staf di Lekiu — rekod mereka terus bersedia untuk gaji. Semua dibaca oleh Tuah AI.
                 </p>
             </div>
 
             <!-- Modul Cards Array -->
-            <div class="grid grid-cols-2 md:grid-cols-5 gap-3 max-w-5xl mx-auto w-full mb-8">
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 max-w-4xl mx-auto w-full mb-8">
                 <div class="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 text-center">
                     <span class="text-2xl">📢</span>
                     <h5 class="text-sm font-bold text-white mt-1">Jebat</h5>
@@ -841,22 +855,17 @@
                 <div class="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 text-center">
                     <span class="text-2xl">🤝</span>
                     <h5 class="text-sm font-bold text-white mt-1">Kasturi</h5>
-                    <p class="text-[11px] text-slate-400">CRM &amp; Saluran Jualan</p>
+                    <p class="text-[11px] text-slate-400">Jualan &amp; Produk</p>
                 </div>
                 <div class="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 text-center">
                     <span class="text-2xl">👥</span>
                     <h5 class="text-sm font-bold text-white mt-1">Lekiu</h5>
-                    <p class="text-[11px] text-slate-400">HR, Cuti &amp; Slip Gaji</p>
+                    <p class="text-[11px] text-slate-400">HR, Gaji &amp; Calon</p>
                 </div>
                 <div class="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 text-center">
-                    <span class="text-2xl">🎯</span>
-                    <h5 class="text-sm font-bold text-white mt-1">Lekir</h5>
-                    <p class="text-[11px] text-slate-400">Pengambilan Pekerja</p>
-                </div>
-                <div class="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 text-center col-span-2 md:col-span-1">
                     <span class="text-2xl">💼</span>
-                    <h5 class="text-sm font-bold text-white mt-1">Bendahara</h5>
-                    <p class="text-[11px] text-slate-400">Kewangan &amp; e-Invois</p>
+                    <h5 class="text-sm font-bold text-white mt-1">Lekir</h5>
+                    <p class="text-[11px] text-slate-400">Kewangan &amp; Invois</p>
                 </div>
             </div>
 
@@ -1064,8 +1073,8 @@
             <div>
                 <h5 class="text-xs font-bold text-white uppercase tracking-wider mb-3">Operasi &amp; Cukai</h5>
                 <ul class="space-y-2">
-                    <li><a href="#ekosistem" class="hover:text-white transition">Lekir (Pengambilan Pekerja)</a></li>
-                    <li><a href="#ekosistem" class="hover:text-white transition">Bendahara (Invois &amp; Lejar)</a></li>
+                    <li><a href="#ekosistem" class="hover:text-white transition">Lekir (Kewangan &amp; Lejar)</a></li>
+                    <li><a href="#ekosistem" class="hover:text-white transition">Lekiu (Pengambilan Staf)</a></li>
                     <li><a href="#ekosistem" class="hover:text-white transition">e-Invois MyInvois LHDN</a></li>
                     <li><a href="#ekosistem" class="hover:text-white transition">Caruman KWSP / SOCSO</a></li>
                 </ul>
@@ -1236,9 +1245,9 @@
                 ]
             },
             {
-                id: 'bendahara',
-                name: 'Bendahara',
-                role: 'Kewangan & Cukai',
+                id: 'lekir',
+                name: 'Lekir',
+                role: 'Kewangan & Invois',
                 color: '#d97706', // Amber
                 hair: '#475569',
                 deskX: 660,
@@ -1260,33 +1269,6 @@
                     'Kira lejar am perniagaan',
                     'Resit shoebox diproses 📸',
                     'Penyata cukai SST siap'
-                ]
-            },
-            {
-                id: 'lekir',
-                name: 'Lekir',
-                role: 'Pengambilan Staf',
-                color: '#7c3aed', // Purple
-                hair: '#18181b',
-                deskX: 385,
-                deskY: 240,
-                x: 385,
-                y: 240,
-                targetX: 385,
-                targetY: 240,
-                state: 'typing',
-                timer: 190,
-                speed: 1.35,
-                dir: 1,
-                walkFrame: 0,
-                item: null,
-                bubble: null,
-                bubbleTimer: 0,
-                bubbles: [
-                    'Resume calon padanan 96% 🎯',
-                    'Jemput temuduga jawatan',
-                    '18 permohonan baru ditapis',
-                    'Kekosongan staf disiarkan'
                 ]
             }
         ];
@@ -1413,10 +1395,10 @@
 
         if (btnTuah) {
             btnTuah.addEventListener('click', function () {
-                setStatus('✨ Tuah AI mengimbas seluruh data perniagaan (Jebat, Kasturi, Lekiu, Lekir, Bendahara).');
+                setStatus('✨ Tuah AI mengimbas seluruh data perniagaan (Jebat, Kasturi, Lekiu, Lekir).');
                 tuahBot.targetX = 430;
                 tuahBot.targetY = 110;
-                tuahBot.bubble = 'Tuah AI: Semua 6 modul bersepadu 100% ⚡';
+                tuahBot.bubble = 'Tuah AI: 5 Bersaudara bersepadu 100% ⚡';
                 tuahBot.bubbleTimer = 180;
                 for (let i = 0; i < 30; i++) {
                     addSparkle(tuahBot.x + (Math.random() - 0.5) * 60, tuahBot.y + (Math.random() - 0.5) * 40, '#f59e0b');
@@ -2025,8 +2007,7 @@
             drawDesk(110, 195, 'JEBAT', '#2563eb');
             drawDesk(250, 195, 'KASTURI', '#059669');
             drawDesk(520, 195, 'LEKIU', '#0891b2');
-            drawDesk(660, 195, 'BENDAHARA', '#d97706');
-            drawDesk(385, 240, 'LEKIR', '#7c3aed');
+            drawDesk(660, 195, 'LEKIR', '#d97706');
 
             // 3. Susun watak mengikut kedalaman Y (Depth Sorting)
             const sortedWorkers = [...workers].sort((a, b) => a.y - b.y);

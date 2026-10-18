@@ -8,6 +8,21 @@
     <link rel="icon" type="image/x-icon" href="{{ asset('favicon.ico') }}">
     <link rel="icon" type="image/png" sizes="32x32" href="{{ asset('favicon-32x32.png') }}">
     <link rel="apple-touch-icon" sizes="180x180" href="{{ asset('apple-touch-icon.png') }}">
+    <script>
+        (function() {
+            try {
+                var theme = localStorage.getItem('openkuasa_theme');
+                if (theme === 'dark') {
+                    document.documentElement.classList.add('dark');
+                } else {
+                    // Default adalah Mod Cerah (Light Mode)
+                    document.documentElement.classList.remove('dark');
+                }
+            } catch (e) {
+                document.documentElement.classList.remove('dark');
+            }
+        })();
+    </script>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 </head>
@@ -101,28 +116,22 @@
                     <span x-show="!collapsed" class="truncate">Jebat (Iklan & Pemasaran)</span>
                 </a>
 
-                <!-- 2. Kasturi (CRM & Jualan / Pipeline) -->
-                <a href="{{ route('crm.index') }}" title="Kasturi (CRM & Saluran Jualan)" class="flex items-center rounded-lg transition {{ request()->is('crm*') ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-400 font-semibold' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/60' }}" :class="collapsed ? 'justify-center p-2.5' : 'gap-3 px-3 py-2'">
+                <!-- 2. Kasturi (CRM, Jualan & Produk) -->
+                <a href="{{ route('crm.index') }}" title="Kasturi (CRM, Jualan & Katalog Produk)" class="flex items-center rounded-lg transition {{ request()->is('crm*') ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-400 font-semibold' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/60' }}" :class="collapsed ? 'justify-center p-2.5' : 'gap-3 px-3 py-2'">
                     <svg class="w-5 h-5 flex-shrink-0 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
                     <span x-show="!collapsed" class="truncate">Kasturi (CRM & Jualan)</span>
                 </a>
 
-                <!-- 3. Lekiu (HR & Gaji / People) -->
-                <a href="{{ route('people.index') }}" title="Lekiu (HR, Kehadiran & Gaji)" class="flex items-center rounded-lg transition {{ request()->is('people*') ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-400 font-semibold' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/60' }}" :class="collapsed ? 'justify-center p-2.5' : 'gap-3 px-3 py-2'">
+                <!-- 3. Lekiu (HR, Gaji & Pengambilan) -->
+                <a href="{{ route('people.index') }}" title="Lekiu (Modal Insan, Gaji & Pengambilan)" class="flex items-center rounded-lg transition {{ (request()->is('people*') || request()->is('hire*')) ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-400 font-semibold' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/60' }}" :class="collapsed ? 'justify-center p-2.5' : 'gap-3 px-3 py-2'">
                     <svg class="w-5 h-5 flex-shrink-0 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
                     <span x-show="!collapsed" class="truncate">Lekiu (HR & Gaji)</span>
                 </a>
 
-                <!-- 4. Lekir (Pengambilan Staf / Hire) -->
-                <a href="{{ route('hire.index') }}" title="Lekir (Pengambilan Staf & Temu Duga)" class="flex items-center rounded-lg transition {{ request()->is('hire*') ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-400 font-semibold' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/60' }}" :class="collapsed ? 'justify-center p-2.5' : 'gap-3 px-3 py-2'">
-                    <svg class="w-5 h-5 flex-shrink-0 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
-                    <span x-show="!collapsed" class="truncate">Lekir (Pengambilan Staf)</span>
-                </a>
-
-                <!-- 5. Bendahara (Kewangan, Perakaunan & Percukaian) -->
-                <a href="{{ route('finance.index') }}" title="Bendahara (Kewangan, Perakaunan & Cukai)" class="flex items-center rounded-lg transition {{ request()->is('finance*') ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-400 font-semibold' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/60' }}" :class="collapsed ? 'justify-center p-2.5' : 'gap-3 px-3 py-2'">
+                <!-- 4. Lekir (Kewangan, Perakaunan & Invois) -->
+                <a href="{{ route('finance.index') }}" title="Lekir (Kewangan, Perakaunan & Invois)" class="flex items-center rounded-lg transition {{ request()->is('finance*') ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-400 font-semibold' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/60' }}" :class="collapsed ? 'justify-center p-2.5' : 'gap-3 px-3 py-2'">
                     <svg class="w-5 h-5 flex-shrink-0 text-amber-600 dark:text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                    <span x-show="!collapsed" class="truncate">{{ app()->getLocale() === 'en' ? 'Bendahara (Finance)' : 'Bendahara (Kewangan)' }}</span>
+                    <span x-show="!collapsed" class="truncate">{{ app()->getLocale() === 'en' ? 'Lekir (Finance)' : 'Lekir (Kewangan)' }}</span>
                 </a>
 
                 <!-- 6. Tetapan Sistem & Bahasa -->
@@ -192,6 +201,28 @@
                 </button>
             </div>
 
+            <!-- Dark / Light Mode Switcher (Expanded) -->
+            <div x-show="!collapsed" class="px-3 pb-2 transition-all">
+                <button data-theme-toggle type="button" class="w-full flex items-center justify-between px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/60 dark:hover:bg-slate-800 transition text-xs font-medium cursor-pointer group" title="Tukar Mod Cerah / Gelap">
+                    <div class="flex items-center gap-2.5 truncate">
+                        <span data-theme-icon class="w-6 h-6 rounded-lg bg-white dark:bg-slate-700 shadow-xs flex items-center justify-center text-slate-700 dark:text-slate-200 flex-shrink-0">
+                            <!-- Injected by JS -->
+                        </span>
+                        <span data-theme-text class="block text-xs font-semibold text-slate-700 dark:text-slate-300 truncate">Mod Cerah</span>
+                    </div>
+                    <div data-theme-track class="w-8 h-4 rounded-full bg-slate-300 dark:bg-indigo-600 p-0.5 transition flex items-center flex-shrink-0">
+                        <div class="w-3 h-3 rounded-full bg-white shadow-xs"></div>
+                    </div>
+                </button>
+            </div>
+
+            <!-- Dark / Light Mode Switcher (Collapsed) -->
+            <div x-show="collapsed" class="px-2 pb-2 flex justify-center transition-all">
+                <button data-theme-toggle type="button" class="w-9 h-9 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/60 dark:hover:bg-slate-800 flex items-center justify-center transition cursor-pointer hover:scale-105" title="Tukar Mod Cerah / Gelap">
+                    <span data-theme-icon class="flex items-center justify-center"></span>
+                </button>
+            </div>
+
             <div class="border-t border-slate-200 dark:border-slate-800 transition-all duration-200" :class="collapsed ? 'p-2' : 'p-3'">
                 <div class="flex items-center" :class="collapsed ? 'flex-col gap-2 justify-center' : 'justify-between'">
                     <div class="flex items-center gap-3 truncate" :class="collapsed ? 'justify-center' : ''">
@@ -226,7 +257,18 @@
     </aside>
 
     <!-- Main Content Area -->
-    <div class="flex-1 flex flex-col min-w-0 overflow-hidden">
+    <div class="flex-1 flex flex-col min-w-0 overflow-hidden relative">
+        <!-- Theme Toggle Pill (Top-Right) -->
+        <div class="fixed top-3.5 right-6 z-40">
+            <button data-theme-toggle type="button" class="group flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-slate-200/90 dark:border-slate-800 shadow-xs hover:shadow-md hover:border-slate-300 dark:hover:border-slate-700 transition cursor-pointer" title="Tukar Mod Cerah / Gelap">
+                <span data-theme-icon class="flex items-center justify-center">
+                    <!-- Injected by JS -->
+                </span>
+                <span data-theme-text class="text-xs font-medium text-slate-700 dark:text-slate-300">
+                    Mod Cerah
+                </span>
+            </button>
+        </div>
         <!-- 4.2 Banner Notifikasi Demo & Impersonasi -->
         @if(Auth::check() && Auth::user()->isDemo())
         <!-- Banner Kekal Akaun Demo -->

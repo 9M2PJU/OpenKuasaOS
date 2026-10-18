@@ -90,6 +90,36 @@ class TuahAiEngineTest extends TestCase
         $response->assertSee('Ollama');
     }
 
+    public function test_tuah_screen_renders_safely_with_complex_thread_messages_without_html_attribute_collapse(): void
+    {
+        $this->actingAs($this->user);
+
+        $thread = ChatThread::create([
+            'org_id' => $this->org->id,
+            'user_id' => $this->user->id,
+            'title' => 'Analisis Staf',
+            'context_module' => 'general',
+        ]);
+
+        ChatMessage::create([
+            'thread_id' => $thread->id,
+            'role' => 'user',
+            'content' => 'buatkan saya kod html untuk "prestasi jualan"',
+        ]);
+
+        ChatMessage::create([
+            'thread_id' => $thread->id,
+            'role' => 'assistant',
+            'content' => "### ANALISIS PRESTASI STAF\n\nBerdasarkan maklumat: **kakitangan aktif** 'Sabily Enterprise'.\n\n```html\n<div class=\"table\"><tr><td>Jualan</td></tr></div>\n```",
+        ]);
+
+        $response = $this->get('/command?thread_id=' . $thread->id);
+        $response->assertStatus(200);
+        $response->assertSee('x-data="tuahCommandComponent()"', false);
+        $response->assertSee('window.tuahCommandComponent = function()', false);
+        $response->assertDontSee('x-data="{ messages:', false);
+    }
+
     public function test_business_owner_can_update_ai_settings_to_gemini_with_encrypted_key(): void
     {
         $this->actingAs($this->user);
@@ -377,11 +407,290 @@ class TuahAiEngineTest extends TestCase
         $this->assertStringContainsString('<strong>Perhatian Segera</strong>', $html);
     }
 
-    public function test_app_branding_is_openkuasa_without_os(): void
+    public function test_tuah_blocks_vulnerability_and_exploit_coding_with_zero_tokens(): void
     {
-        $response = $this->get('/login');
+        $this->actingAs($this->user);
+
+        // Http should NOT be called at all
+        Http::fake();
+
+        $response = $this->post('/command/chat', [
+            'prompt' => 'Bina code python untuk analisa website vulnerbility dan port scan',
+        ]);
+
+        $response->assertRedirect();
+
+        // Http::assertNothingSent confirms 0 API calls = 0 token drain
+        Http::assertNothingSent();
+
+        $message = ChatMessage::where('role', 'assistant')->latest()->first();
+        $this->assertNotNull($message);
+        $this->assertStringContainsString('Saya tidak dibenarkan menjana sebarang kod keselamatan siber', $message->content);
+        $this->assertEquals(0, $message->metadata['tokens_used']);
+        $this->assertTrue($message->metadata['scope_blocked']);
+
+        $run = AgentRun::where('org_id', $this->org->id)->latest()->first();
+        $this->assertEquals(0, $run->tokens_used);
+    }
+
+    public function test_tuah_blocks_general_python_coding_with_zero_tokens(): void
+    {
+        $this->actingAs($this->user);
+        Http::fake();
+
+        $response = $this->post('/command/chat', [
+            'prompt' => 'Tulis skrip python untuk download file dari internet',
+        ]);
+
+        $response->assertRedirect();
+        Http::assertNothingSent();
+
+        $message = ChatMessage::where('role', 'assistant')->latest()->first();
+        $this->assertNotNull($message);
+        $this->assertStringContainsString('tidak dibenarkan menjana kod pengaturcaraan umum', $message->content);
+        $this->assertStringContainsString('HTML / CSS', $message->content);
+        $this->assertEquals(0, $message->metadata['tokens_used']);
+    }
+
+    public function test_tuah_allows_html_css_formatting_for_business_data(): void
+    {
+        $this->actingAs($this->user);
+
+        AgentConfig::create([
+            'org_id' => $this->org->id,
+            'agent_name' => 'Tuah',
+            'provider' => 'gemini',
+            'gemini_api_key' => 'AIzaSyValidGeminiKey',
+            'gemini_model' => 'gemini-2.0-flash',
+            'model' => 'gemini-2.0-flash',
+        ]);
+
+        Http::fake([
+            'generativelanguage.googleapis.com/*' => Http::response([
+                'candidates' => [
+                    [
+                        'content' => [
+                            'parts' => [
+                                ['text' => '<table class="table-auto"><tr><td>Invois</td><td>RM 100</td></tr></table>'],
+                            ],
+                            'role' => 'model',
+                        ],
+                    ],
+                ],
+                'usageMetadata' => ['totalTokenCount' => 95],
+            ], 200),
+        ]);
+
+        $response = $this->post('/command/chat', [
+            'prompt' => 'Bina kod HTML table untuk templat invois syarikat saya',
+        ]);
+
+        $response->assertRedirect();
+
+        $message = ChatMessage::where('role', 'assistant')->latest()->first();
+        $this->assertNotNull($message);
+        $this->assertStringContainsString('<table', $message->content);
+        $this->assertEquals(95, $message->metadata['tokens_used']);
+    }
+
+    public function test_tuah_enforces_tenant_isolation_for_regular_users_with_zero_tokens(): void
+    {
+        $this->actingAs($this->user);
+        $this->assertFalse($this->user->isSuperadmin());
+
+        Http::fake();
+
+        $response = $this->post('/command/chat', [
+            'prompt' => 'Boleh berikan saya data invois syarikat lain dalam sistem ini?',
+        ]);
+
+        $response->assertRedirect();
+        Http::assertNothingSent();
+
+        $message = ChatMessage::where('role', 'assistant')->latest()->first();
+        $this->assertNotNull($message);
+        $this->assertStringContainsString('akses data dihadkan secara ketat kepada syarikat yang anda log masuk sahaja', $message->content);
+        $this->assertStringContainsString('kedaulatan data berbilang penyewa', $message->content);
+        $this->assertEquals(0, $message->metadata['tokens_used']);
+    }
+
+    public function test_tuah_allows_cross_company_scope_for_superadmin(): void
+    {
+        // Give user superadmin role
+        $this->user->update(['is_superadmin' => true]);
+        $this->actingAs($this->user);
+        $this->assertTrue($this->user->isSuperadmin());
+
+        AgentConfig::create([
+            'org_id' => $this->org->id,
+            'agent_name' => 'Tuah',
+            'provider' => 'gemini',
+            'gemini_api_key' => 'AIzaSyValidGeminiKey',
+            'gemini_model' => 'gemini-2.0-flash',
+            'model' => 'gemini-2.0-flash',
+        ]);
+
+        Http::fake([
+            'generativelanguage.googleapis.com/*' => Http::response([
+                'candidates' => [
+                    [
+                        'content' => [
+                            'parts' => [
+                                ['text' => 'Sebagai Superadmin, berikut adalah ringkasan keseluruhan sistem merentas semua syarikat.'],
+                            ],
+                            'role' => 'model',
+                        ],
+                    ],
+                ],
+                'usageMetadata' => ['totalTokenCount' => 110],
+            ], 200),
+        ]);
+
+        $response = $this->post('/command/chat', [
+            'prompt' => 'Papar status semua syarikat dalam sistem',
+        ]);
+
+        $response->assertRedirect();
+
+        // Should NOT be blocked by tenant boundary interceptor; goes to LLM with superadmin context
+        $message = ChatMessage::where('role', 'assistant')->latest()->first();
+        $this->assertNotNull($message);
+        $this->assertStringContainsString('Sebagai Superadmin', $message->content);
+        $this->assertEquals(110, $message->metadata['tokens_used']);
+    }
+
+    public function test_tuah_chat_via_ajax_returns_json_for_realtime_smooth_scrolling(): void
+    {
+        $this->actingAs($this->user);
+
+        AgentConfig::create([
+            'org_id' => $this->org->id,
+            'agent_name' => 'Tuah',
+            'provider' => 'gemini',
+            'gemini_api_key' => 'AIzaSyValidGeminiKey',
+            'gemini_model' => 'gemini-2.0-flash',
+            'model' => 'gemini-2.0-flash',
+        ]);
+
+        Http::fake([
+            'generativelanguage.googleapis.com/*' => Http::response([
+                'candidates' => [
+                    [
+                        'content' => [
+                            'parts' => [
+                                ['text' => 'Analisa kewangan selesai: semua invois diproses.'],
+                            ],
+                            'role' => 'model',
+                        ],
+                    ],
+                ],
+                'usageMetadata' => ['totalTokenCount' => 75],
+            ], 200),
+        ]);
+
+        // Request with XMLHttpRequest / JSON header
+        $response = $this->postJson('/command/chat', [
+            'prompt' => 'Ringkaskan status kewangan semasa',
+        ]);
+
         $response->assertStatus(200);
-        $response->assertSee('Open<span class="text-indigo-600 dark:text-indigo-400">Kuasa</span>', false);
-        $response->assertDontSee('OpenKuasaOS');
+        $response->assertJsonStructure([
+            'success',
+            'thread_id',
+            'user_message' => ['id', 'role', 'content'],
+            'assistant_message' => ['id', 'role', 'content', 'rendered_html'],
+        ]);
+
+        $data = $response->json();
+        $this->assertTrue($data['success']);
+        $this->assertEquals('Ringkaskan status kewangan semasa', $data['user_message']['content']);
+        $this->assertStringContainsString('Analisa kewangan selesai', $data['assistant_message']['content']);
+    }
+
+    public function test_tuah_command_new_session_parameter_resets_active_thread(): void
+    {
+        $this->actingAs($this->user);
+
+        // Create an existing thread with messages
+        $thread = ChatThread::create([
+            'org_id' => $this->org->id,
+            'user_id' => $this->user->id,
+            'title' => 'Sembang Terdahulu',
+        ]);
+        ChatMessage::create([
+            'thread_id' => $thread->id,
+            'org_id' => $this->org->id,
+            'user_id' => $this->user->id,
+            'role' => 'user',
+            'content' => 'Soalan lama',
+        ]);
+
+        // Standard index loads the thread by default
+        $response = $this->get('/command');
+        $response->assertStatus(200);
+        $response->assertViewHas('activeThread', function ($viewThread) use ($thread) {
+            return $viewThread && $viewThread->id === $thread->id;
+        });
+        $response->assertSee('Sembang Terdahulu');
+
+        // Visiting with ?new=1 starts a fresh session
+        $responseNew = $this->get('/command?new=1');
+        $responseNew->assertStatus(200);
+        $responseNew->assertViewHas('activeThread', null);
+        $responseNew->assertViewHas('initialMessages', []);
+    }
+
+    public function test_tuah_command_deletes_thread_and_cascades_messages(): void
+    {
+        $this->actingAs($this->user);
+
+        $thread = ChatThread::create([
+            'org_id' => $this->org->id,
+            'user_id' => $this->user->id,
+            'title' => 'Sesi Nak Dipadam',
+        ]);
+        $message = ChatMessage::create([
+            'thread_id' => $thread->id,
+            'org_id' => $this->org->id,
+            'user_id' => $this->user->id,
+            'role' => 'user',
+            'content' => 'Mesej sesi ini',
+        ]);
+
+        $response = $this->delete("/command/threads/{$thread->id}");
+        $response->assertRedirect(route('command.index', ['new' => 1]));
+        $response->assertSessionHas('success');
+
+        $this->assertDatabaseMissing('chat_threads', ['id' => $thread->id]);
+        $this->assertDatabaseMissing('chat_messages', ['id' => $message->id]);
+    }
+
+    public function test_tuah_command_cannot_delete_other_organization_thread(): void
+    {
+        $this->actingAs($this->user);
+
+        $otherOrg = Org::create([
+            'name' => 'Syarikat Sebelah Sdn Bhd',
+            'slug' => 'syarikat-sebelah',
+        ]);
+        $otherUser = User::create([
+            'name' => 'Ahmad Competitor',
+            'email' => 'ahmad@syarikatsebelah.my',
+            'password' => bcrypt('password123'),
+        ]);
+
+        // Create thread belonging to otherOrg
+        $otherThread = ChatThread::create([
+            'org_id' => $otherOrg->id,
+            'user_id' => $otherUser->id,
+            'title' => 'Sesi Syarikat Sebelah',
+        ]);
+
+        $response = $this->delete("/command/threads/{$otherThread->id}");
+        $response->assertRedirect(route('command.index', ['new' => 1]));
+
+        // Thread in otherOrg MUST NOT be deleted
+        $this->assertDatabaseHas('chat_threads', ['id' => $otherThread->id]);
     }
 }
+

@@ -95,9 +95,9 @@ class WebModuleViewsTest extends TestCase
         $this->get('/dashboard')->assertStatus(200)->assertSee('Pusat Kawalan Perniagaan');
         $this->get('/command')->assertStatus(200)->assertSee('Pusat Arahan Pintar Merentas Modul');
 
-        // Bendahara (Finance)
+        // Lekir (Finance)
         $this->get('/finance')->assertStatus(200)
-            ->assertSee('Bendahara')
+            ->assertSee('Lekir')
             ->assertSee('Cash balance')
             ->assertSee('Revenue · MTD')
             ->assertSee('Outstanding · AR')
@@ -121,18 +121,20 @@ class WebModuleViewsTest extends TestCase
         $this->get('/people/leave')->assertStatus(200)->assertSee('Pengurusan Cuti');
         $this->get('/people/payroll')->assertStatus(200)->assertSee('Enjin Penggajian Berkanun Malaysia');
 
-        // Kasturi (CRM)
+        // Kasturi (CRM & Produk)
         $this->get('/crm')->assertStatus(200)->assertSee('Kasturi');
         $this->get('/crm/deals')->assertStatus(200)->assertSee('Papan Saluran Urus Niaga');
         $this->get('/crm/contacts')->assertStatus(200)->assertSee('Buku Kontak Pelanggan');
+        $this->get('/crm/products')->assertStatus(200)->assertSee('Katalog Produk');
 
-        // Jebat (Reach)
+        // Jebat (Reach & Ad Studio)
         $this->get('/reach')->assertStatus(200)->assertSee('Jebat');
         $this->get('/reach/campaigns')->assertStatus(200)->assertSee('Kempen Pengiklanan Digital');
         $this->get('/reach/leads')->assertStatus(200)->assertSee('Pangkalan Data Prospek');
+        $this->get('/reach/studio')->assertStatus(200)->assertSee('Jebat Ad Studio');
 
-        // Lekir (Hire)
-        $this->get('/hire')->assertStatus(200)->assertSee('Lekir');
+        // Lekiu (Hire)
+        $this->get('/hire')->assertStatus(200)->assertSee('Lekiu');
         $this->get('/hire/jobs')->assertStatus(200)->assertSee('Iklan Jawatan Kosong');
         $this->get('/hire/applications')->assertStatus(200)->assertSee('Calon Pemohon Pekerjaan');
         $this->get('/hire/interviews')->assertStatus(200)->assertSee('Jadual Sesi Temu Duga');
@@ -260,24 +262,21 @@ class WebModuleViewsTest extends TestCase
         $response->assertSee('toggleSidebar()', false);
         $response->assertSee('openkuasa_sidebar_collapsed', false);
 
-        // Check modules order: Jebat -> Kasturi -> Lekiu -> Lekir -> Bendahara
+        // Check 4 business modules order: Jebat -> Kasturi -> Lekiu -> Lekir
         $content = $response->getContent();
         $posJebat = strpos($content, 'Jebat (Iklan');
         $posKasturi = strpos($content, 'Kasturi (CRM');
         $posLekiu = strpos($content, 'Lekiu (HR');
-        $posLekir = strpos($content, 'Lekir (Pengambilan');
-        $posBendahara = strpos($content, 'Bendahara (Kewangan)');
+        $posLekir = strpos($content, 'Lekir (Kewangan');
 
         $this->assertNotFalse($posJebat, 'Jebat not found in sidebar');
         $this->assertNotFalse($posKasturi, 'Kasturi not found in sidebar');
         $this->assertNotFalse($posLekiu, 'Lekiu not found in sidebar');
         $this->assertNotFalse($posLekir, 'Lekir not found in sidebar');
-        $this->assertNotFalse($posBendahara, 'Bendahara not found in sidebar');
 
         $this->assertTrue($posJebat < $posKasturi, 'Jebat must appear before Kasturi');
         $this->assertTrue($posKasturi < $posLekiu, 'Kasturi must appear before Lekiu');
         $this->assertTrue($posLekiu < $posLekir, 'Lekiu must appear before Lekir');
-        $this->assertTrue($posLekir < $posBendahara, 'Lekir must appear before Bendahara');
     }
 
     public function test_hire_lekir_dashboard_renders_metrics_and_charts_matching_screenshot(): void
@@ -366,5 +365,102 @@ class WebModuleViewsTest extends TestCase
         $response->assertSee('LinkedIn');
         $response->assertSee('JobStreet');
         $response->assertSee('Shortlisted');
+    }
+
+    public function test_crm_products_crud_and_catalog_management(): void
+    {
+        $this->actingAs($this->user);
+
+        // 1. Create a new product in Kasturi catalog
+        $response = $this->post('/crm/products', [
+            'name' => 'Minyak Wangi Kasturi 50ml',
+            'sku' => 'SKU-WNG-50',
+            'category' => 'Produk Fizikal',
+            'price' => 120.00,
+            'cost_price' => 40.00,
+            'stock' => 80,
+            'usp' => 'Wangian tahan 24 jam dengan aroma kasturi asli bebas alkohol.',
+            'target_audience' => 'Lelaki & wanita bekerjaya',
+            'status' => 'active',
+        ]);
+
+        $response->assertRedirect();
+        $response->assertSessionHas('success');
+
+        $this->assertDatabaseHas('products', [
+            'org_id' => $this->org->id,
+            'name' => 'Minyak Wangi Kasturi 50ml',
+            'price' => 120.00,
+        ]);
+
+        // 2. View catalog
+        $catalogResponse = $this->get('/crm/products');
+        $catalogResponse->assertStatus(200);
+        $catalogResponse->assertSee('Minyak Wangi Kasturi 50ml');
+        $catalogResponse->assertSee('RM 120.00');
+        $catalogResponse->assertSee('Jana Iklan Jebat');
+    }
+
+    public function test_jebat_ad_studio_generates_copy_for_products_and_jobs(): void
+    {
+        $this->actingAs($this->user);
+
+        // Create product
+        $product = \App\Models\Product::create([
+            'org_id' => $this->org->id,
+            'name' => 'Kopi Herba Tradisi 20 Sachet',
+            'sku' => 'SKU-KOP-01',
+            'category' => 'Produk Fizikal',
+            'price' => 45.00,
+            'stock' => 100,
+            'usp' => 'Meningkatkan tenaga dan fokus harian tanpa rasa lesu.',
+            'target_audience' => 'Pekerja pejabat & usahawan',
+            'status' => 'active',
+        ]);
+
+        // Create job
+        $job = \App\Models\HireJob::create([
+            'org_id' => $this->org->id,
+            'title' => 'Eksekutif Pemasaran Digital',
+            'department' => 'Pemasaran',
+            'employment_type' => 'full_time',
+            'salary_min' => 3000,
+            'salary_max' => 4500,
+            'description' => 'Mengurus kempen iklan berbayar dan analitik ROI.',
+            'status' => 'published',
+        ]);
+
+        // 1. Visit Ad Studio
+        $this->get('/reach/studio')->assertStatus(200)
+            ->assertSee('Jebat')
+            ->assertSee('Studio Penjana Iklan AI')
+            ->assertSee('Kopi Herba Tradisi 20 Sachet');
+
+        // 2. Generate Product Ad Copy (Facebook)
+        $resProduct = $this->postJson('/reach/generate-copy', [
+            'type' => 'product',
+            'platform' => 'facebook',
+            'product_id' => $product->id,
+            'promo_text' => 'Beli 2 Percuma 1',
+        ]);
+
+        $resProduct->assertStatus(200);
+        $resProduct->assertJsonStructure(['success', 'headline', 'body', 'cta', 'hashtags']);
+        $dataProduct = $resProduct->json();
+        $this->assertTrue($dataProduct['success']);
+        $this->assertStringContainsString('Kopi Herba Tradisi 20 Sachet', $dataProduct['body']);
+        $this->assertStringContainsString('Beli 2 Percuma 1', $dataProduct['body']);
+
+        // 3. Generate Job Recruitment Ad Copy (TikTok)
+        $resJob = $this->postJson('/reach/generate-copy', [
+            'type' => 'job',
+            'platform' => 'tiktok',
+            'job_id' => $job->id,
+        ]);
+
+        $resJob->assertStatus(200);
+        $dataJob = $resJob->json();
+        $this->assertTrue($dataJob['success']);
+        $this->assertStringContainsString('Eksekutif Pemasaran Digital', $dataJob['headline']);
     }
 }
