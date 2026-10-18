@@ -1,7 +1,197 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# ==============================================================================
+# OpenKuasaOS - .gitignore (Laravel, Credentials, Sample Data, & Environment)
+# ==============================================================================
 
-# dependencies
-/node_modules
+# ------------------------------------------------------------------------------
+# 1. Laravel Framework & Generated Assets
+# ------------------------------------------------------------------------------
+/vendor/
+/node_modules/
+/public/build/
+/public/hot
+/public/storage
+
+# Storage directories and cached runtime files
+/storage/*.key
+/storage/app/*
+!/storage/app/
+!/storage/app/.gitignore
+!/storage/app/public/
+!/storage/app/public/.gitignore
+!/storage/app/private/
+!/storage/app/private/.gitignore
+
+/storage/framework/cache/*
+!/storage/framework/cache/.gitignore
+!/storage/framework/cache/data/
+!/storage/framework/cache/data/.gitignore
+!/storage/framework/cache/locks/
+!/storage/framework/cache/locks/.gitignore
+
+/storage/framework/sessions/*
+!/storage/framework/sessions/.gitignore
+
+/storage/framework/testing/*
+!/storage/framework/testing/.gitignore
+
+/storage/framework/views/*
+!/storage/framework/views/.gitignore
+
+/storage/logs/*
+!/storage/logs/.gitignore
+
+# Bootstrap compiled cache
+/bootstrap/cache/*.php
+!/bootstrap/cache/.gitignore
+
+# ------------------------------------------------------------------------------
+# 2. Credentials, Secrets & Private Keys (PASTIKAN TIADA KREDENTIAL DI-UPLOAD)
+# ------------------------------------------------------------------------------
+# Environment configuration files
+.env
+.env.*
+!.env.example
+!.env.example.*
+.env.backup
+.env.production
+.env.production.local
+.env.staging
+.env.local
+.env.development.local
+.env.test.local
+
+# Private keys, certificates, and auth tokens
+*.key
+*.pem
+*.crt
+*.cer
+*.der
+*.p12
+*.pfx
+oauth-private.key
+oauth-public.key
+id_rsa*
+id_ed25519*
+id_ecdsa*
+id_dsa*
+
+# Composer / NPM / Package manager authentication
+auth.json
+.npmrc
+.yarnrc
+
+# API tokens, secret credentials, service accounts
+credentials.json
+client_secret*.json
+service-account*.json
+firebase-adminsdk*.json
+*credentials*.json
+*secret*.json
+*.secret
+*.secrets
+.secrets
+secrets/
+.credentials/
+credentials/
+token.json
+tokens.json
+*.token
+master.key
+jwt.secret
+
+# Cloud provider CLI credentials
+.aws/
+.azure/
+.gcp/
+gcloud/
+
+# ------------------------------------------------------------------------------
+# 3. Sample Data, Database Dumps & User Uploads (PASTIKAN TIADA DATA SAMPLE)
+# ------------------------------------------------------------------------------
+# SQLite databases & journals
+*.sqlite
+*.sqlite-journal
+*.sqlite3
+*.db
+*.db-journal
+database.sqlite
+database/*.sqlite*
+database/*.db*
+
+# Database dumps, backups & exports
+*.sql
+!database/migrations/*.sql
+!supabase/migrations/*.sql
+!supabase/tests/*.sql
+*.sql.gz
+*.sql.zip
+*.sql.tar.gz
+*.dump
+*.dump.*
+*.bak
+*.backup
+*.rdb
+/dumps/
+/backups/
+/storage/dumps/
+database/dumps/
+
+# Sample data & dummy data folders/files
+sample_data/
+sample-data/
+data_sample/
+data-sample/
+dummy_data/
+dummy-data/
+mock_data/
+mock-data/
+sample_files/
+sample-files/
+fixtures/uploads/
+fixtures/downloads/
+fixtures/temp/
+
+# Raw data exports & spreadsheets
+*.csv
+*.tsv
+*.xlsx
+*.xls
+
+# User uploads and attachment directories
+/public/uploads/
+/public/files/
+storage/app/receipts/*
+storage/app/invoices/*
+storage/app/cv/*
+storage/app/resumes/*
+storage/app/avatars/*
+storage/app/documents/*
+storage/app/letters/*
+
+# ------------------------------------------------------------------------------
+# 4. Testing, Logs & Debugging
+# ------------------------------------------------------------------------------
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+.phpunit.result.cache
+.phpunit.cache
+/coverage
+/evals/reports
+
+# Python / Pytest
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ------------------------------------------------------------------------------
+# 5. Build, Bundler & Package Managers (Yarn / Next.js / TypeScript)
+# ------------------------------------------------------------------------------
 /.pnp
 .pnp.*
 .yarn/*
@@ -9,51 +199,30 @@
 !.yarn/plugins
 !.yarn/releases
 !.yarn/versions
-
-# testing
-/coverage
-/evals/reports
-
-# next.js
 /.next/
 /out/
-
-# production
 /build
-
-# misc
-.DS_Store
-*.pem
-
-# debug
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
-
-# env files (can opt-in for committing if needed)
-.env*
-!.env.example
-
-# vercel
-.vercel
-
-# netlify
-.netlify
-
-# typescript
 *.tsbuildinfo
 next-env.d.ts
+.vercel
+.netlify
 
-# claude code
+# ------------------------------------------------------------------------------
+# 6. IDE, Operating System & Personal Tooling
+# ------------------------------------------------------------------------------
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+ehthumbs.db
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
 .claude/settings.local.json
-
-# local MCP server config (personal tooling, not shipped)
 .mcp.json
-
-# superpowers SDD workspace + local MCP scratch (not shipped)
 .superpowers/
 .playwright-mcp/
-
-# planning notes stay local (not shipped)
 docs/superpowers/
+Homestead.json
+Homestead.yaml
